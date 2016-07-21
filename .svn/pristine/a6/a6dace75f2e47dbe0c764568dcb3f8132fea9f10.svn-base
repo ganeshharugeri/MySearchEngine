@@ -1,0 +1,30 @@
+package com.isp.searchengine;
+
+public class MyURL {
+
+	@Override
+    public boolean equals(Object obj) {
+		if(obj instanceof MyURL)
+		{
+			return string.equals(((MyURL)obj).string);
+		}
+		return string.equals(((MyURL)obj));
+    }
+    @Override
+    public int hashCode() {
+        return string.hashCode();
+    }
+	public int level;
+	public String string;
+
+	public MyURL(String string, int level) {
+		super();
+		this.string = string;
+		this.level=level;
+		
+
+	}
+
+	
+
+}

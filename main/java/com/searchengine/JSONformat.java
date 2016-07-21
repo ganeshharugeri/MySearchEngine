@@ -1,0 +1,199 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import org.json.simple.JSONObject;
+import org.json.simple.JSONArray;
+
+
+
+// Servlet to return results in JSON format
+public class JSONformat extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+	
+	static Storetables st = new Storetables();
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public JSONformat() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+    @SuppressWarnings("unchecked")
+	protected void doGet(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException 
+    {
+
+		response.setContentType("text/html");
+		//Call Stemmer function
+		Stemmer stemobj = new Stemmer();	
+		//Initializing JSONArray and JSONObject 
+		JSONObject root = new JSONObject();
+		JSONArray resultListArray = new JSONArray();
+		JSONArray queryarray = new JSONArray();
+		JSONArray statarray = new JSONArray();
+		JSONArray cwarray = new JSONArray();
+        //Printer object to print the JSON results in the web console
+		PrintWriter output = response.getWriter();
+		String query = null;
+		int limit = 0;
+		Connection conn = null;
+
+		// Reading input from Console
+		System.out.println("\n Enter the query terms");
+		//query = in.nextLine();
+        query= request.getParameter("jsonsearch");
+		
+		
+		System.out.println("\n Enter number of documents to be retrieved?: ");
+		//limit = in.nextInt();
+		limit = Integer.parseInt(request.getParameter("json_no_of_docs"));
+		
+		try {
+			
+			//Store the entered query string one by one in an ArrayList
+			ArrayList<String> keys = new ArrayList<String>();
+			//System.out.println("Keys Size: >>" + keys.size());
+			String stemmedkeyword = null;
+			String[] array = query.split(" ");
+			for (int j = 0; j < array.length; j++) 
+			{
+				if (array[j].length() != 1) 
+				{
+					char[] w = array[j].toCharArray();
+					stemobj.add(w, array[j].length());
+					stemobj.stem();
+					stemmedkeyword = stemobj.toString();
+					keys.add(stemmedkeyword);
+					//System.out.println("test stem:" + stemmedkeyword);
+				}
+			}
+			
+			
+            //Getting Connection to DB from Storetables Class
+			conn = st.connects();
+
+			// Default mode-Disjunctive query
+			if (conn != null) 
+			{
+				//Disjunctive query processing
+				StringBuilder orquery = new StringBuilder(
+						"select distinct(url),fs.tf_idf_score from documents d,features fs where fs.term = ");
+				for (int i = 0; i < keys.size(); i++) {
+					if (i > 0) {
+						orquery.append(" or fs.term =");
+					}
+					orquery.append("?");
+				}
+				orquery.append("and fs.docid= d.docid order by tf_idf_score desc;");
+				PreparedStatement orps = conn.prepareStatement(orquery.toString());
+				System.out.println("OR query: " + orquery);
+				for (int m = 0; m < keys.size(); m++) {
+					orps.setString(m + 1, keys.get(m));
+				}
+				ResultSet orrs = orps.executeQuery();
+				int z = 1;
+				while (orrs.next() && z <= limit) 
+				{
+					//Storing the Disjunctive query result in JSONObject
+					JSONObject obj = new JSONObject();
+					obj.put("rank", z);
+					obj.put("url", orrs.getString(1));
+					obj.put("score", orrs.getFloat(2));
+					//Adding the result list to JSONArray object
+					resultListArray.add(obj);
+					z++;
+				}
+
+				// Computing document frequency for each term
+				
+				System.out.println("Entering to compute Document Frequency:");
+				for (int i = 0; i < keys.size(); i++) {
+					StringBuilder queryterms = new StringBuilder(
+							"select count(*) from features fs where fs.term = ?");
+					PreparedStatement termcountps = conn.prepareStatement(queryterms.toString());
+					
+					termcountps.setString(1, keys.get(i));
+					ResultSet crps = termcountps.executeQuery();
+					while (crps.next()) 
+					{
+						//Storing the term and its corresponding document frequency in JSONObject
+						JSONObject obj2 = new JSONObject();
+						obj2.put("term", keys.get(i));
+						obj2.put("df", crps.getInt(1));
+						//Adding the result list to JSONArray object
+						statarray.add(obj2);
+					}
+				}
+
+				// Computing collection frequency
+				
+				System.out.println("Entering to compute Collection Frequency:");
+				for (int k = 0; k < keys.size(); k++) {
+					StringBuilder cw = new StringBuilder(
+							"select sum(term_freq) from features fs where fs.term = ?");
+					PreparedStatement cwps = conn.prepareStatement(cw.toString());
+
+					cwps.setString(1, keys.get(k));
+					ResultSet cwrs = cwps.executeQuery();
+
+					while (cwrs.next()) {
+						//Storing the collection frequency in JSONObject
+						JSONObject obj3 = new JSONObject();
+						obj3.put("cw", cwrs.getInt(1));
+						cwarray.add(obj3);
+
+					}
+				}
+
+				JSONObject obj4 = new JSONObject();
+				obj4.put("k", limit);
+				obj4.put("Query", query);
+				//Adding the result list to JSONArray object
+				queryarray.add(obj4);
+				
+                //Inserting all JSONArrayList to JSONObject named root
+				root.put("resultList", resultListArray);
+				root.put("QueryInfo", queryarray);
+				root.put("Stat", statarray);
+				root.put("cw", cwarray);
+
+				
+				System.out.println("JSON Format :\n");
+				System.out.println(root.toJSONString());
+				 StringWriter outn = new StringWriter();
+				 root.writeJSONString(outn);
+				// The printwriter object from response  writes the result storing json object to the output stream.
+				 output.println(outn);
+				 response.setContentType("Application/json");
+				
+			}
+
+		} catch (ClassNotFoundException e1) {
+			e1.printStackTrace();
+		} catch (SQLException e1) {
+			e1.printStackTrace();
+		}
+
+	}
+
+	protected void doPost(HttpServletRequest request1,
+			HttpServletResponse response) throws ServletException, IOException {
+		doGet(request1, response);
+	}
+
+}

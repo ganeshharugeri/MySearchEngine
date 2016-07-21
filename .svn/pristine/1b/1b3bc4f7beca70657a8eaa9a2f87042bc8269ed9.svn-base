@@ -1,0 +1,56 @@
+/**
+ * 
+ */
+package com.searchengine;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+/**
+ * @author ganeshharugeri
+ *
+ */
+public class Snippets {
+	static Storetables st = new Storetables();
+	static Connection conn = null;
+
+	//Store contents in db for snippets 
+	public static void storeContents(int docid,String title,String pagecontent) throws SQLException {
+		 PreparedStatement ps = null;
+		try {
+			conn = st.connects();
+			String storeText = "insert into snippets(docid,title,pagecontent) values(?, ?, ?)";
+			ps = conn.prepareStatement(storeText);
+			ps.setInt(1, docid);
+			ps.setString(2, title);
+			ps.setString(3, pagecontent);
+			ps.executeUpdate();
+		} catch (ClassNotFoundException | SQLException e) {
+			e.printStackTrace();
+		}finally {
+			if (ps != null)
+				ps.close();
+			if (conn != null)
+				conn.close();
+		}
+	}
+	
+	public static void updateSnippetTable() throws SQLException {
+		 PreparedStatement ps = null;
+		try {
+			conn = st.connects();
+			String updateSnippet = "update snippets s set vector = k.vector from (select docid,to_tsvector('english', pagecontent) as vector from snippets) k  where k.docid = s.docid";
+			ps = conn.prepareStatement(updateSnippet);
+			ps.executeUpdate();
+		} catch (ClassNotFoundException | SQLException e) {
+			e.printStackTrace();
+		}finally {
+			if (ps != null)
+				ps.close();
+			if (conn != null)
+				conn.close();
+		}
+	}
+	
+}

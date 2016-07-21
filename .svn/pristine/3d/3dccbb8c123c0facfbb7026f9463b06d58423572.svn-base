@@ -1,0 +1,83 @@
+package com.searchengine;
+
+
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+
+/**
+ * Servlet implementation class Imgretrieve
+ */
+public class Imgretrieve extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+
+ 
+    public Imgretrieve() {
+        super();
+ 
+    }
+
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException 
+	{
+		
+		Storetables st = new Storetables();
+	
+   		Connection conn = null;
+        PreparedStatement orps = null;
+   		ResultSet rs1 = null;
+        String image_searchterm=request.getParameter("ImageSearch");
+
+        
+   		try {
+
+   			conn = st.connects();
+   			response.setContentType("text/html");
+   			//String ret = "select img_data,img_id from imagestable where img_title='anand' or img_title='bigg boss'";
+
+   			String sqldisplay="select img_id,img_data,score from imagesfeatures JOIN imagestable USING (img_id) where terms @@ to_tsquery('"+image_searchterm+"') order by score desc";
+   			
+   			 orps = conn.prepareStatement(sqldisplay);
+   			PrintWriter outs= response.getWriter();
+   			 rs1 = orps.executeQuery();
+ 
+       
+             outs.println("<html><body>");
+  			//ServletOutputStream output = response.getOutputStream();
+            outs.println("<div id=header><h2 align=centre> G & G Image Search Results </h2> </div>");
+
+   			 while(rs1.next())
+   			 { 
+
+   				String bt=rs1.getString(1);
+    				outs.println("<img src=\"data:image/;base64,"+bt +"\""
+       				 		+ " style=\"width:300px;height:300px;padding:15px\""
+       				 		+ "/> ");
+ 
+   			 }
+   			 
+   		}
+   		catch (ClassNotFoundException | SQLException e)
+   		{
+			
+			e.printStackTrace();
+		}
+
+	}
+		
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+	
+		doGet(request, response);
+	}
+
+	
+}

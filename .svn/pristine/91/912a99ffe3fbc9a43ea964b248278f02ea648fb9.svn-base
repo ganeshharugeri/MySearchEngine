@@ -1,0 +1,264 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+
+
+/**
+ * Servlet implementation class Search_Servlet_German
+ */
+@WebServlet("/Search_Servlet_German")
+public class Search_Servlet_German extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+
+
+		   	protected void doGet(HttpServletRequest request, HttpServletResponse response)
+		   			throws ServletException, IOException {
+	       
+		   		response.setContentType("text/html");
+		   		Stemmer stemObj = new Stemmer();
+		   		String names = request.getParameter("searchname");
+		   		System.out.println(" Entered string is> " + names);
+		   		boolean andflag = false, siteflag = false;
+		   		ArrayList<String> quoteskey = new ArrayList<String>();
+		   		ArrayList<String> didumean = new ArrayList<String>();
+		   	    ArrayList<String> keys = new ArrayList<String>();
+		   		String sitestring = "";
+		   		String siteword ="";
+
+		   		if (names.contains("site:")) {
+		   			siteflag = true;
+		   			sitestring = names.substring(names.indexOf(":")+1, names.length());
+		   			if(!(sitestring.indexOf(" ")<=0))
+		   			siteword = sitestring.substring(0, sitestring.indexOf(" "));
+		   			System.out.println("The entered site word> " + siteword);
+		   			String str = "site:"+siteword;
+		   			names = names.replace(str, "").replaceAll("\\s+"," ");
+		   			//System.out.println("End string> "+names);
+		   		}
+
+		   		String temp = names.replaceAll("[“”]", "");
+
+		   		String stemmedkeyword = null;
+		   		String[] array = temp.split(" ");
+		   		for (int j = 0; j < array.length; j++) {
+		   			if (array[j].length() != 1) {
+		   				char[] w = array[j].toCharArray();
+		   				stemObj.add(w, array[j].length());
+		   				stemObj.stem();
+		   				stemmedkeyword = stemObj.toString();
+		   				keys.add(stemmedkeyword);
+		   				// System.out.println("test stem:" + stemmedkeyword);
+		   			}
+		   		}
+
+		   		if ((names.contains("“") | (names.contains("”")) | (names.contains("\"")))) {
+		   			// System.out.println("Entering the regex section");
+		   			andflag = true;
+		   			Pattern p = Pattern.compile("“([^“”\"]*)”");
+		   			Matcher m = p.matcher(names);
+		   			while (m.find()) {
+		   				quoteskey.add(m.group(1));
+		   			}
+		   		}
+	         
+		   		
+
+		   		PrintWriter out = response.getWriter();
+		   		Storetables st = new Storetables();
+		   		Connection conn = null;
+		   		Boolean lavenshteinflag=false;
+
+		   		PreparedStatement orps = null, andps = null, srps = null;
+		   		ResultSet rs1 = null, rs2 = null, rs3 = null;
+
+		   		try {
+		   		     //Calculating Lavenshtein Distance
+		   			
+		   			conn = st.connects();
+		   			
+		   			out.println("<div id=header><h2 align=centre> G & G Search Results </h2> </div>");
+		   			
+		   			System.out.println("Entering to compute Lavenshtein Distance of the Term:");
+					for (int l = 0; l < keys.size(); l++) {
+						StringBuilder lavenstein_terms = new StringBuilder(
+								"select  fs.term,MIN(levenshtein(fs.term,?)) from features fs where levenshtein(fs.term,?) <= 2 group by fs.term,fs.abs_term_freq order by levenshtein(fs.term, ?),fs.abs_term_freq desc limit 1");
+						PreparedStatement laventermps = conn.prepareStatement(lavenstein_terms.toString());
+						laventermps.setString(1, keys.get(l));
+						laventermps.setString(2, keys.get(l));
+						laventermps.setString(3, keys.get(l));
+						ResultSet laven = laventermps.executeQuery();
+						
+					
+						while (laven.next()) 
+						{
+							
+							if(laven.getInt(2)==0)
+							{
+								//No spelling mistake in the term entered
+								didumean.add(keys.get(l));
+							}
+							else if(laven.getRow()==1) {
+								
+								//"Spelling mistake found in the term entered"
+							    didumean.add(laven.getString(1));
+							    System.out.println("Spelling mistake corrected: "+laven.getString(1));
+						    //Flag to check if there was any error in the entered query
+							    lavenshteinflag=true;
+							}
+						}
+		
+					}
+					//If error in query term display did you mean
+	                if (lavenshteinflag)
+	                {
+	                	StringBuilder concatenate= new StringBuilder();
+	                	StringBuilder concatenateplus= new StringBuilder();
+
+	                	for(String str:didumean)
+	                	{
+	                	     concatenate.append(str).append(" ");
+	                	     concatenateplus.append(str).append("+");
+	                	}
+	                	out.println("<h4> Ergebnisse für : ");
+	              
+	                	out.print("<a href=http://localhost:1234/com.webapp/Search_Servlet_German?searchname="+concatenateplus+">"+concatenate+ "</a></h4>");
+	                    
+	                }
+		   			
+		   			
+		   			if (!siteflag) 
+		   			{
+		   				
+		   				out.println(
+		   						"<table border=1> <tr><th> RANK        </th> <th padding: 5px;>   URL    </th> <th>   Score   </th></tr>");
+
+		   				// OR Query - string with no quotes
+
+		   				StringBuilder orquery = new StringBuilder(
+		   						"select distinct(url),fs.combined_score from documents d,features fs where fs.language='german' and fs.term in (");
+		   				for (int i = 0; i < keys.size(); i++) {
+		   					if (i > 0) {
+		   						orquery.append(",");
+		   					}
+		   					orquery.append("?");
+		   				}
+		   				orquery.append(")").append("and fs.docid= d.docid order by combined_score desc;");
+		   				orps = conn.prepareStatement(orquery.toString());
+		   				// System.out.println("OR query: " + orquery);
+		   				for (int m = 0; m < keys.size(); m++) {
+		   					// System.out.println("Key values : " + keys.get(m));
+		   					orps.setString(m + 1, keys.get(m));
+		   				}
+		   				rs1 = orps.executeQuery();
+		   				int z = 1;
+		   				while (rs1.next() && !andflag && z <= 20) {
+		   					System.out.println("\n url:" + rs1.getString(1) + " combined score: " + rs1.getFloat(2));
+		   					out.print("<tr><td>" + z + "</td> <td padding: 5px;><a href=#>" + rs1.getString(1)
+		   							+ "</a></td> <td> " + rs1.getFloat(2) + "</td></tr>");
+
+		   					z++;
+		   				}
+		   			}
+		   			//quotes query implementation
+		   			if (andflag && !siteflag) {
+		   				// System.out.println(" Entering AND query");
+		   				StringBuilder andquery = new StringBuilder(
+		   						"select distinct(url),f.combined_score from features f,documents d where f.language='german' and f.docid = d.docid and f.term in (");
+		   				for (int i = 0; i < quoteskey.size(); i++) {
+		   					if (i > 0) {
+		   						andquery.append(",");
+		   					}
+		   					andquery.append("?");
+		   				}
+		   				andquery.append(")").append("and f.docid in (select distinct(docid) from features where language='german' and term in (");
+		   				for (int l = 0; l < keys.size(); l++) {
+		   					if (l > 0)
+		   						andquery.append(",");
+		   					andquery.append("?");
+		   				}
+		   				andquery.append("))").append("order by combined_score desc");
+		   				//System.out.println("And query :" + andquery);
+		   				andps = conn.prepareStatement(andquery.toString());
+		   				for (int n = 0; n < quoteskey.size(); n++) {
+		   					//System.out.println("quoteskey.size(): " + quoteskey.size());
+		   					andps.setString(n + 1, quoteskey.get(n));
+		   				}
+		   				int r = keys.size() + quoteskey.size();
+		   				for (int f = quoteskey.size(); f < r; f++) {
+		   					andps.setString(f + 1, keys.get(f - 1));
+		   				}
+		   				rs2 = andps.executeQuery();
+		   				int y = 1;
+		   				while (rs2.next() && y <= 20) {
+		   					System.out.println("Url in and :" + rs2.getString(1) + " combined score: " + rs2.getFloat(2));
+		   					out.print("<tr><td>" + y + "</td> <td padding: 5px;><a href=#>" + rs2.getString(1)
+		   							+ "</a></td> <td> " + rs2.getFloat(2) + "</td></tr>");
+
+		   					y++;
+		   				}
+		   			}
+		   			
+		   			// site implementation
+
+		   			if (siteflag) {
+		   				out.println("<table border=1> <tr><th> RANK    </th> <th padding: 5px;>   URL    </th><th>   Score   </th> </tr>");
+		   				StringBuilder sitequery = new StringBuilder();
+		   				 //sitequery.append("select url from documents where url like '%" + sitestring + "%'");
+		   				 sitequery.append("select distinct(url),f.combined_score from documents d,features f where f.language='german' and url like '%"+siteword+"%' and f.docid=d.docid and f.term in (");
+		   				for (int i = 0; i < keys.size(); i++) {
+		   					if (i > 0) {
+		   						sitequery.append(",");
+		   					}
+		   					sitequery.append("?");
+		   				}
+		   				sitequery.append(")").append(" order by combined_score desc;");
+		   				srps = conn.prepareStatement(sitequery.toString());
+		   				System.out.println("site query: " + sitequery);
+		   				for (int m = 0; m < keys.size(); m++) {
+		   				 //System.out.println("Key values in site : " + keys.get(m));
+		   					srps.setString(m + 1, keys.get(m));
+		   				}
+		   				rs3 = srps.executeQuery();
+		   				int z = 1;
+		   				while (rs3.next() && z <= 20) {
+		   					System.out.println("\n url:" + rs3.getString(1)+ " combined score: " + rs3.getFloat(2));
+
+		   					out.print("<tr><td>" + z + "</td> <td padding: 5px;><a href=#>" + rs3.getString(1)
+		   							+ "</a></td> <td> " + rs3.getFloat(2) + "</td></tr>");
+		   					z++;
+		   				}
+		   			}
+		   			out.println("</table>");
+		   			conn.close();
+		   		}
+
+		   		catch (SQLException e) {
+		   			e.printStackTrace();
+		   		} catch (ClassNotFoundException e) {
+		   			e.printStackTrace();
+		   		}
+
+		   	}
+
+		   	protected void doPost(HttpServletRequest request, HttpServletResponse response)
+		   			throws ServletException, IOException {
+		   		// TODO Auto-generated method stub
+		   		doGet(request, response);
+		   	}
+
+		   }

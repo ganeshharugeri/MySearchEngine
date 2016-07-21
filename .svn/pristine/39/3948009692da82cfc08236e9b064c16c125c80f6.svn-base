@@ -1,0 +1,267 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+
+/**
+ * Servlet implementation class TestServeletorandquery
+ */
+public class TestServeletorandquery extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+       
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public TestServeletorandquery() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+	//	response.getWriter().append("Served at: ").append(request.getContextPath());
+		System.out.println("Entering the DB connection");
+		response.setContentType("text/html");
+		String names = request.getParameter("searchname");
+		 System.out.println(" Entered string is "+names);
+		boolean andflag=false;
+		String quotestring="";
+		  StringBuilder urlorcheck = new StringBuilder();
+		  StringBuilder urlandcheck = new StringBuilder();
+		//String t = "\”"; 
+		System.out.println("t value :"+names);
+		String[] keys = names.split(" ");
+		System.out.println("Keys values : "+ keys.toString());
+		 if ((names.contains("“")|(names.contains("”"))))
+		 {
+			 andflag=true;
+			 System.out.println("Entering quote section");
+		     String tempstring = names.substring(names.indexOf("“") + 1,names.length());  
+			 System.out.println("tempString: "+tempstring);
+			 quotestring = tempstring.substring(0, tempstring.indexOf("”"));
+			 System.out.println("The entered quotes string :"+ quotestring);
+
+		 }
+		String[] quoteskey = quotestring.split(" ");
+        JSONObject resultArray1 = new JSONObject();
+		JSONArray listarray= new JSONArray();
+		ArrayList<String>orarray = new ArrayList<String>();
+        ArrayList<Float>orarraytf = new ArrayList<Float>();
+	    ArrayList<String>andarray=new ArrayList<String>();
+	    ArrayList<Float>andarraytf = new ArrayList<Float>();
+//		Stemmer s = new Stemmer(); 
+//		StringBuilder stemmedkeyword = new StringBuilder();
+//		for (int j = 0; j < keys.length; j++) {
+//			// if(keys[j].length()!=1)
+//			// {
+//			if (keys[j].length() != 1) {
+//				char[] w = keys[j].toCharArray();
+//				s.add(w, keys[j].length());
+//				s.stem(); // Stemming
+//				arr.add(s.toString()+" ");
+//				
+//			}
+//		}  
+		//stemmedkeyword.toString().split(" ");  
+		PrintWriter out = response.getWriter();
+		Connection conn=null;
+		System.out.println("Entering the DB connection");
+		PreparedStatement orps=null, andps =null;
+		String dbURL = "jdbc:postgresql://localhost:5432/postgres";
+		String user = "postgres";
+		String pass = "isproject";
+		ResultSet rs1 =null,rs2=null,rs3=null,rs4=null;
+		try {
+			Class.forName("org.postgresql.Driver");
+			conn = DriverManager.getConnection(dbURL, user, pass);
+		} catch (SQLException e) {
+			e.printStackTrace();
+			return;
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		
+
+		try{
+			Class.forName("org.postgresql.Driver");
+			System.out.println("test is :");
+			 out.println("<div id=header><h2 align=centre> G & G Search Results </h2> </div>");
+	          out.println("<table border=1> <tr><th> RANK        </th> <th padding: 5px;>   URL    </th> <th>  TF_IDF- Score </th></tr>");
+			 StringBuilder orquery = new StringBuilder("select url,fs.tf_idf_score from documents d,features fs where fs.term = ");
+		      for (int i = 0; i < keys.length; i++){
+		    	  if (i > 0){
+		          orquery.append(" or fs.term =");
+		    	  }
+		    	  orquery.append("?");
+		      }
+		      orquery.append("and fs.docid= d.docid order by tf_idf_score desc;");
+		      orps =conn.prepareStatement(orquery.toString());
+		      System.out.println("OR query: "+orquery);
+		      for(int m=0;m < keys.length;m++){
+		    	  orps.setString(m+1, keys[m]);
+		      } 
+		       rs1 =orps.executeQuery();
+		       int z=1;
+		       while(rs1.next()&&!andflag && z<=20){
+		    	   System.out.println("\n url:"+rs1.getString(1)+ " tfidf score: "+rs1.getFloat(2));
+		    	    orarray.add(rs1.getString(1));
+		    	    orarraytf.add(rs1.getFloat(2));
+		    	    
+		    	    System.out.println("I am in OR print");
+	    			   out.print("<tr><td>"+ z + "</td> <td padding: 5px;><a href=#>" + rs1.getString(1)+"</a></td> <td> "+ rs1.getFloat(2) +"</td></tr>");
+	    			   JSONObject obj=new JSONObject();
+	   	               obj.put("rank", z);
+	   	               obj.put("url", rs1.getString(1)); 
+	   	            listarray.add(obj);
+	   	            z++;
+		       }      
+		     if(andflag){
+		     System.out.println(" Entering AND query");
+		     StringBuilder andquery = new StringBuilder("select url,fs.tf_idf_score from documents d,features fs where fs.term in (");
+		     	for (int i = 0; i < quoteskey.length; i++){
+		     		if (i > 0){
+		     			andquery.append(",");
+		     	}
+		     andquery.append("?");
+		     }
+		     andquery.append(")").append("and fs.docid= d.docid group by url,fs.tf_idf_score having count (*)= "+ quoteskey.length+ "order by tf_idf_score desc;"); 
+		     System.out.println("And query :"+andquery);
+		     andps =conn.prepareStatement(andquery.toString());
+		     	for(int n=0;n< quoteskey.length;n++){
+		    	    andps.setString(n+1, quoteskey[n]);
+		     	} 
+		     	rs2  =andps.executeQuery();
+		     	//rs3  =andps.executeQuery();
+		     	int y=1;
+		     	Iterator<String> ite = orarray.iterator();
+		     	while(rs2.next()){
+		     		System.out.println("Url in and :"+rs2.getString(1) +" tfidf score: "+rs2.getFloat(2));
+		    	    andarray.add(rs2.getString(1));
+		    	    andarraytf.add(rs2.getFloat(2));
+		    	    System.out.println("I am in OR print");
+	    			   out.print("<tr><td>"+ y + "</td> <td padding: 5px;><a href=#>" + rs2.getString(1)+"</a></td> <td> "+ rs2.getFloat(2) +"</td></tr>");
+	    			   JSONObject obj=new JSONObject();
+	   	               obj.put("rank", y);
+	   	               obj.put("url", rs1.getString(1)); 
+	   	            listarray.add(obj);
+	   	            y++;
+		     	}
+		    }		    
+		    //String str="<table> <tr><th> RAnNK </th> <th> URL </th></tr>";
+		       while(rs1.next() && andflag){
+		    	   while(rs2.next()){
+		    		   int i=0;
+		    		   if(andflag||rs1.getString(1).equalsIgnoreCase(rs2.getString(1)))
+		    		   {
+		    			   out.print("<tr><td>"+ i + "</td> <td padding: 5px;><a href=#>" + rs1.getString(1)+"</a></td> <td> "+ rs1.getFloat(2) +"</td></tr>");
+		    			   JSONObject obj=new JSONObject();
+		   	               obj.put("rank", i);
+		   	               obj.put("url", rs1.getString(1)); 
+		   	            listarray.add(obj);
+		   	            i++;
+		    		   }
+		    		  
+		    	   }
+		       }
+		       /*int n=1;
+		       System.out.println("Testing OR RRRR ::"+rs1.next() +"and flag value: "+andflag);
+		      //Iterator<String> ite = orarray.iterator();
+		       while(rs1.next() && !andflag){
+		    	   System.out.println("I am in OR print");
+    			   out.print("<tr><td>"+ n + "</td> <td padding: 5px;><a href=#>" + rs1.getString(1)+"</a></td> <td> "+ rs1.getFloat(2) +"</td></tr>");
+    			   JSONObject obj=new JSONObject();
+   	               obj.put("rank", n);
+   	               obj.put("url", rs1.getString(1)); 
+   	            listarray.add(obj);
+   	            n++;
+    		   }*/
+		    
+
+         
+	       
+	       //  getJSONobj(listarray);
+	        
+              resultArray1.put("resultList", listarray);           
+//            resultArray1.put("query", new JSONObject().put("k", 5));
+//             resultArray1.put("cw", 10000);
+              StringWriter outn = new StringWriter();
+              resultArray1.writeJSONString(outn);
+              System.out.println("JSON Format :\n");
+              System.out.println(outn.toString());
+         
+	     
+	       // str+="</table>";
+	        out.println("</table>");
+	     //   out.println(str);
+	   
+	        conn.close();
+		} catch (ClassNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		
+		/*  Add the jar
+		 * JSONObject resultArray = new JSONObject();
+            JSONObject obj2=new JSONObject();
+            obj2.put("rank", i);
+            obj2.put("url", item.getUrl());
+             obj2.put("score", item.getTf_idf());
+              array.add(obj);
+              resultArray.put("resultList", array);
+              resultArray.put("query", new JSONObject().put("k", 5));
+               resultArray.put("cw", 10000);
+               StringWriter out = new StringWriter();
+                resultArray.writeJSONString(out);
+               System.out.println(out.toString());
+		 * 
+		 * 
+		 */
+		
+	}
+//	   public void getJSONobj(JSONArray objA)
+//       {
+////		   JSONArray rec = new JSONArray();
+////         
+////          StringWriter printjson =new StringWriter();
+//          // Iterator ite = listarray.iterator();  
+//           
+//           
+//           for(int i1=0; i1<objA.size(); i1++)
+//           {
+//           	  
+//             System.out.println("\n"+objA.toString());
+//           }
+//       }
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse response)
+	 */
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		doGet(request, response);
+	}
+
+}

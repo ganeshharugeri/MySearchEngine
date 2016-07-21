@@ -1,0 +1,100 @@
+package com.isp.searchengine;
+
+import java.awt.List;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.Iterator;
+
+public class Babycrawler {
+	final static int Max_depth = 3;
+	//Maximum number of documents to crawl
+		final static int Max_Num_Doc = 5; 
+	//Pages which are already visited
+		static Set<String> host = new HashSet<String>();  
+		static Set<String> vp = new HashSet<String>();  
+	//Pages to visit next 	
+		static LinkedList<String> yvp = new LinkedList<String>();
+	//	static Set<String> locallinks =  new HashSet<String>();	
+		static URL tempurl = null;
+		
+		public static void main(String[] args) throws IOException{
+		URL testurl = new URL("http://www.informatik.uni-kl.de/en/");
+        host.add(testurl.toString());
+			//starturl.add("http://www.informatik.uni-kl.de/en/");
+        host.addAll(Babycrawler.getLinksFromSite(1,host));
+        System.out.println("+++++++++++Total Links: "+host);
+		}
+		
+		public static Set<String> getLinksFromSite(int level,Set<String>Links ) 
+		{
+			System.out.println("1.Entering getLinksFromSite"+Links);
+			try{
+			if(level< 3) {
+				
+				Set<String> locallinks =  new HashSet<String>();	
+				//synchronized (locallinks) {
+					
+				
+				//LinkedList<String> list = new LinkedList<String>();
+				for (Iterator<String> iterator = Links.iterator(); iterator.hasNext(); ) {
+					System.out.println("######11111111");
+					String link = iterator.next();
+				//for(String link :Links){
+				System.out.println("2.@@@@@@@@@@@Link working on :"+link);
+					tempurl = new URL(link);
+					  BufferedReader input = new BufferedReader(new InputStreamReader(tempurl.openStream()));
+			            StringBuilder readStr = new StringBuilder();
+			            String tempreadStr = "";
+			            while(null != (tempreadStr = input.readLine())){
+			            	readStr.append(tempreadStr);	         
+			            	}
+			            //System.out.println("3.Before:"+readStr);
+						Pattern hrf=(Pattern.compile("href=\"(.*?)\""));
+						Matcher m1=hrf.matcher(readStr);
+						String href= null;
+						int i =1;
+						while(m1.find())
+						{ 
+						   href=m1.group(1);
+						   if(href.contains(("http://")) && (i<Max_Num_Doc)){
+						 //  System.out.println("Outgoing links: "+href);
+						   vp.add(href);
+						   i++;
+						} 
+						
+				}		
+						System.out.println("3. \nOutgoing links: "+vp.size());
+						System.out.println("4. \nVisited pages: "+vp);
+						System.out.println("*******************************************************");
+						   //System.out.println("outside while>>>>>>>>>>>>>>");
+				System.out.println("Level: "+level);
+						locallinks.addAll(getLinksFromSite(level+1,vp));
+				}
+			//}
+			return locallinks;
+		}
+			else 
+			{
+			return Links;
+			
+			}
+			}
+			catch(Exception e)
+			{
+				e.printStackTrace();
+			}
+			return Links;
+			}
+			
+			
+		}
+
+

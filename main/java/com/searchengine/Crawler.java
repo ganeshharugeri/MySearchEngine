@@ -1,0 +1,414 @@
+package com.searchengine;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.MalformedURLException;
+import java.net.SocketTimeoutException;
+import java.net.URL;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
+import java.util.Scanner;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * @author ganeshharugeri Reference:
+ *         http://introcs.cs.princeton.edu/java/16pagerank/
+ *
+ */
+public class Crawler {
+	final static int Max_depth = 4;
+	// Maximum number of documents to crawl
+	final static int Max_Num_Doc = 3;
+	static Queue<String> primQueue = new LinkedList<String>();
+	static Queue<String> secQueue = new LinkedList<String>();
+	static Queue<String> holder = new LinkedList<String>();
+	static Set<String> parsed = new LinkedHashSet<String>();
+	private static Scanner in;
+	static Indexer index = new Indexer();
+	static Storetables st = new Storetables();
+	static int docid = 0;
+	static int depth = 0;
+	static int shingle_size = 0;
+	static PageRank pr = new PageRank();
+
+	public static void main(final String[] args) throws Exception {
+		// Host url given
+		final String host = "http://cs.uni-kl.de/en/";
+		primQueue.add(host);
+		System.out.println("Host url:" + host);
+		System.out.println("Entry depth:" + depth);
+		// Create necessary tables
+		final Create_tables cr = new Create_tables();
+		cr.create();
+		// get the last recent Docid
+		if (st.getDocid() > 0)
+			docid = st.getDocid() + 1;
+		// System.out.println("Latest Docid : " + docid);
+		// Get the domain of the host URL
+		final String hostDomain = checkDomain(host);
+		// Get a response from the User to allow/deny to leave the domain
+		in = new Scanner(System.in);
+		Boolean response;
+		System.out.println("Do you wish to move out of the Domain: y/n ");
+		while (true) {
+			final String ans = in.nextLine().trim().toLowerCase();
+			if (ans.equals("y")) {
+				response = true;
+				break;
+			} else if (ans.equals("n")) {
+				response = false;
+				break;
+			} else {
+				System.out.println("Only y/n is allowed. Please try again");
+			}
+		}
+		System.out.println("Shingles size?");
+		while (true) {
+			if (!in.hasNextInt()) {
+				System.out.println("Invalid input, Enter an integer!");
+				in.next();
+				continue;
+			}
+			int shin_size = in.nextInt();
+			if (shin_size > 0) {
+				// System.out.print("that's correct");
+				shingle_size = shin_size;
+				// setShingle_Size(shin_size);
+			} else {
+				System.out.print("invalid integer!");
+				continue;
+			}
+			break;
+
+		}
+		// Crawler starts using 2 queues
+		while (!primQueue.isEmpty() || !secQueue.isEmpty()) {
+			// Process primary queue
+			if (secQueue.isEmpty()) {
+				// CrawlerThread.primQueue =new CrawlerThread(1);
+				processPrimQueue(primQueue, depth, hostDomain, response);
+				depth++;
+				System.out.println("Reached depth: " + depth);
+			}
+			// Process secondary queue
+			else if (primQueue.isEmpty()) {
+				processSecQueue(secQueue, depth, hostDomain, response);
+				depth++;
+				System.out.println("Reached depth: " + depth);
+			}
+			// Exit condition for the crawler
+			if (depth >= Max_depth || parsed.size() >= Max_Num_Doc) {
+				System.out.println("Parsing Completed.\nURLs parsed are: ");
+				for (final String str : parsed) {
+					System.out.println(str);
+					// Store parsed urls in Documents table
+					final int id = st.storetotemp(str, docid);
+					st.storetodocuments(str, id);
+					// docid++;
+				}
+				// Total number documents
+				System.out.println("\nTotal number of documents parsed are: "
+						+ parsed.size());
+				// Calculate tf*idf score for all the terms
+				System.out.println("\nCalculating TFIDF scores...");
+				st.computetf_idf();
+				System.out.print("completed.");
+				// Calculate Okapi score for all the terms
+				System.out.println("\nCalculating okapi scores...");
+				st.compute_bm25();
+				System.out.print("completed.");
+				// Calculate Page rank and combined scores
+				System.out
+						.println("\nCalculating page rank and combined scores...");
+				pr.compute_pagerank();
+				System.out.print("completed.");
+
+				System.out.println("\nUpdating snippets table...");
+				Snippets.updateSnippetTable();
+				System.out.print("completed.");
+
+				System.out
+						.println("\nCalculating and updating Jaccard similarity for docs...");
+				Shingles.compareDocuments();
+				System.out.print("completed.");
+
+				System.out.println("\nHashing shingles ...");
+				MinHashing.hashShingles();
+				System.out.print("completed.");
+
+				System.out
+						.println("\nComparing minhashing shingles and updating similarity results ...");
+				MinHashing.compareMinShingles();
+				System.out.print("completed.");
+
+				System.out.println("\nUpdating similarity comparisons ...");
+				MinHashing.compareSimResults();
+				System.out.print("completed.");
+				System.out.println("\nEND!");
+
+				break;
+			}
+		}
+	}
+
+	// Process Primary queue , two queues to maintain the depth
+	public static void processPrimQueue(final Queue<String> primQueue,
+			final int depth, final String hostDomain, final Boolean response)
+			throws ClassNotFoundException, SQLException, IOException {
+		// System.out.println(">>>>>>Processing Primary Queue>>>>>>>");
+
+		while (!primQueue.isEmpty() && depth <= Max_depth
+				&& parsed.size() <= Max_Num_Doc) {
+			try {
+				final Boolean restart = st.verifyurl();
+				String primURL = null;
+				// Check to restart if the last execution was aborted
+				if (restart && depth == 0) {
+					while (restart && depth == 0) {
+						LinkedHashSet<String> parsedURLs = new LinkedHashSet<String>();
+						final ArrayList<String> temholder = new ArrayList<String>();
+						// Get last parsed urls from parsedtable and store them
+						// Parsed variable
+						parsedURLs = st.getParsedurl();
+						parsed.addAll(parsedURLs);
+						// Start from the next url
+						final String lasturl = parsedURLs.toArray()[parsedURLs
+								.size() - 1].toString();
+						final int lasturlid = st.storetotemp(lasturl, docid);
+						final int fromid = st.getfromid(lasturlid);
+						primURL = st.geturl(fromid);
+						// Restart crawling
+						if (!primURL.isEmpty())
+							temholder.addAll(getLinksFromSite(primURL));
+						for (int m = lasturlid + 3; m < temholder.size(); m++) {
+							secQueue.add(temholder.get(m));
+						}
+						// break and start regular crawling process
+						break;
+					}
+				} else {
+					primURL = primQueue.poll();
+					primURL = trimURL(primURL);
+					final int id = st.storetotemp(primURL, docid);
+					if (id >= docid)
+						docid++;
+					if (index.parse(primURL, id)) {
+						// System.out.println(primURL + " is Parsed.");
+						// Function to store image source and related data
+						ImageFormatStoring.Image_retrieval(primURL, id);
+						if (parsed.isEmpty()) {
+							parsed.add(primURL);
+							st.storeinparsed(primURL, id);
+						}
+
+						final String urlDomain = checkDomain(primURL);
+						if (urlDomain.equalsIgnoreCase(hostDomain) || response) {
+							holder.addAll(getLinksFromSite(primURL));
+							secQueue.addAll(removeRedundant(holder, parsed));
+							for (String str : holder) {
+								str = trimURL(str);
+								// System.out.println("holder:: "+str);
+								final int oid = st.storetotemp(str, docid);
+								// System.out.println("rid :"+oid);
+								if (oid >= docid)
+									docid++;
+								st.storeLinks(id, oid);
+							}
+							System.out.println("Yet to parse "
+									+ (Max_Num_Doc - parsed.size()) + " URLs");
+							holder.clear();
+						}
+						// to remove cycles in parsed table
+						final String parsedtest = parsed.toArray()[parsed
+								.size() - 1].toString();
+						if (!primURL.equalsIgnoreCase(parsedtest)) {
+							final int rid = st.storetotemp(primURL, id);
+							// System.out.println("rid :"+rid);
+							if (rid >= docid)
+								docid++;
+							st.storeinparsed(primURL, rid);
+						}
+						parsed.add(primURL);
+					}
+				}
+			} catch (final SocketTimeoutException exception) {
+				continue;
+			} catch (final MalformedURLException me) {
+				continue;
+				// System.err.println("MalformedURLException: " + me);
+			} catch (final IOException ioe) {
+				continue;
+				// System.err.println("IOException: " + ioe);
+			}
+
+		}
+	}
+
+	// Process Secondary Queue, two queues to maintain the depth
+	public static void processSecQueue(final Queue<String> secQueue,
+			final int depth, final String hostDomain, final Boolean response)
+			throws ClassNotFoundException, SQLException, IOException {
+		// System.out.println("************primQueue is empty*************");
+		while (!secQueue.isEmpty() && depth <= Max_depth
+				&& parsed.size() < Max_Num_Doc) {
+			try {
+				String secURL = secQueue.poll();
+				secURL = trimURL(secURL);
+				final int id = st.storetotemp(secURL, docid);
+				// System.out.println("id in else if: "+id);
+				if (id >= docid)
+					docid++;
+				if (index.parse(secURL, id)) {
+					// System.out.println(secURL + " is Parsed.");
+
+					// Function to store image source and related data
+					ImageFormatStoring.Image_retrieval(secURL, id);
+
+					final String urlDomain = checkDomain(secURL);
+					if (urlDomain.equalsIgnoreCase(hostDomain) || response) {
+						holder.addAll(getLinksFromSite(secURL));
+						primQueue.addAll(removeRedundant(holder, parsed));
+						for (String str : holder) {
+							str = trimURL(str);
+							final int oid = st.storetotemp(str, docid);
+							// System.out.println("oid in else if: "+oid);
+							if (oid >= docid)
+								docid++;
+							st.storeLinks(id, oid);
+						}
+					}
+					final String parsedtest = parsed.toArray()[parsed.size() - 1]
+							.toString();
+					if (!secURL.equalsIgnoreCase(parsedtest)) {
+						final int rid = st.storetotemp(secURL, id);
+						// System.out.println("id in else if: "+rid);
+						if (rid >= docid)
+							docid++;
+						st.storeinparsed(secURL, rid);
+					}
+					parsed.add(secURL);
+				}
+				System.out.println("Yet to parse "
+						+ (Max_Num_Doc - parsed.size()) + " URLs");
+				holder.clear();
+			} catch (final SocketTimeoutException exception) {
+				continue;
+			} catch (final MalformedURLException me) {
+				System.err.println("MalformedURLException: " + me);
+			} catch (final IOException ioe) {
+				System.err.println("MalformedURLException: " + ioe);
+			}
+		}
+	}
+
+	// get the domain function
+	public static String checkDomain(final String CheckURL) {
+		String domainString = null;
+		if (!CheckURL.isEmpty()) {
+			// remove the unwanted string prior to first dot
+			final String tempString = CheckURL.substring(
+					CheckURL.indexOf(".") + 1, CheckURL.length());
+			// get the string prior the second dot
+			if (tempString.indexOf(".") > 0)
+				domainString = tempString.substring(0, tempString.indexOf("."));
+			else
+				domainString = CheckURL.substring(CheckURL.indexOf("/") + 2,
+						CheckURL.indexOf("."));
+			return domainString;
+		} else
+			return CheckURL;
+	}
+
+	// Trim the URLs ending with slash, helps in removing redundant urls
+	public static String trimURL(String url) {
+		if ((url).endsWith("/")) {
+			// System.out.println("Testin trimURL");
+			return url = url.substring(0, (url).length() - 1);
+		} else
+			return url;
+	}
+
+	// Remove the redundant urls from queue
+	static Queue<String> removeRedundant(final Queue<String> url2trim,
+			final Set<String> parsed) {
+		try {
+			for (final String str : parsed) {
+				final Iterator<String> ite = url2trim.iterator();
+				while (ite.hasNext()) {
+					String tempurl = ite.next();
+					tempurl = trimURL(tempurl);
+					final String trimtempurl = tempurl.substring(
+							tempurl.indexOf(":") + 1, tempurl.length());
+					final String trimstr = str.substring(str.indexOf(":") + 1,
+							str.length());
+					final String urlend = tempurl
+							.substring(tempurl.length() - 3);
+					// remove unwanted URLs ending with ico,png,css,pdf
+					if (urlend.equalsIgnoreCase("bmp")
+							|| urlend.equalsIgnoreCase("ico")
+							|| urlend.equalsIgnoreCase("png")
+							|| urlend.equalsIgnoreCase("css")
+							|| urlend.equalsIgnoreCase("jpg")
+							|| urlend.equalsIgnoreCase("jpeg")
+							|| urlend.equalsIgnoreCase("gif")) {
+						// System.out.println("dummy extension url : "+tempurl);
+						ite.remove();
+					} else if (str.equalsIgnoreCase(tempurl)
+							|| trimstr.equalsIgnoreCase(trimtempurl)) {
+						ite.remove();
+					}
+				}
+			}
+		} catch (Exception e) {
+			System.err.println("Exception in removeRedundant method: " + e);
+		}
+		return url2trim;
+
+	}
+
+	// Crawling method to fetch outgoing links
+	static List<String> getLinksFromSite(final String url) {
+		final List<String> connnectedURL = new ArrayList<String>();
+		final StringBuilder readStr = new StringBuilder();
+		String tempreadStr = null;
+		try {
+			// System.out.println("Outgoing links for the url:\n " + url);
+			final BufferedReader input = new BufferedReader(
+					new InputStreamReader(new URL(url).openStream()));
+			while (null != (tempreadStr = input.readLine())) {
+				readStr.append(tempreadStr);
+			}
+			final Pattern hrf = (Pattern.compile("href=\"(.*?)\""));
+			final Matcher m1 = hrf.matcher(readStr);
+			String href = null;
+			// get outgoing links for the given URL
+			while (m1.find()) {
+				href = m1.group(1);
+				if (href.contains(("http://")) || (href.contains(("https://")))) {
+					connnectedURL.add(href);
+				}
+			}
+			// System.out.println("Outgoing links for url:"+url+
+			// "are"+connnectedURL.size());
+		} catch (final Exception e) {
+			System.err.println("Exception in getLinksFromSite: " + e);
+		}
+		return connnectedURL;
+	}
+
+	public static int getShingle_Size() {
+		return shingle_size;
+	}
+
+	// public static void setShingle_Size(int shing_size) {
+	// shingle_size = shing_size;
+	// }
+}

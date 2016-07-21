@@ -1,0 +1,51 @@
+package com.searchengine;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+
+public class Create_tables 
+{
+    //Function to create tables
+	public void create() {
+		Connection conn = null;
+		Statement stmt = null;
+		
+		try {
+			//Accessing postgres driver class
+			Class.forName("org.postgresql.Driver");
+            // JDBC URL for connecting with user credentials
+			String dbURL = "jdbc:postgresql://localhost:5432/postgres";
+			String user = "postgres";
+			String pass = "isproject";
+			conn = DriverManager.getConnection(dbURL, user, pass);
+	
+			if (conn != null) 
+			{
+                //Create table if not exists the table
+				stmt = conn.createStatement();
+				String createfeaturessql = "CREATE TABLE IF NOT EXISTS features(docid integer,term text,abs_term_freq integer,term_freq float,doc_freq integer,idf float,tf_idf_score float,crawled_date date,doclen float,doclen_by_avgdoclen float,bm25_idf float,bm25_score float,pr_score float,normalised_bm25score float, normalised_prscore float,combined_score float)";
+				String createdocumentsssql = "CREATE TABLE IF NOT EXISTS documents(docid integer,url text,crawled_date date)";
+				String createtemptable = "CREATE TABLE IF NOT EXISTS temptable(docid integer,url text)";
+				String linkstable = "CREATE TABLE IF NOT EXISTS links(from_docid integer,to_docid integer)";
+				String parsedtable = "CREATE TABLE IF NOT EXISTS parsedtable(docid integer,url text)";
+				//Execute the corresponding the create table query 
+				stmt.executeUpdate(createfeaturessql);
+				stmt.executeUpdate(createdocumentsssql);
+				stmt.executeUpdate(createtemptable);
+				stmt.executeUpdate(linkstable);
+				stmt.executeUpdate(parsedtable);
+				//stmt.executeUpdate(index);
+
+			}
+			stmt.close();
+			conn.close();
+
+		} catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+
+	}
+
+}

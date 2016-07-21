@@ -1,0 +1,13 @@
+package com.searchengine;
+
+public class CrawlerQueue {
+
+	public void add(String url, int depth, boolean state) {
+		//DML to enter in database
+	}
+	
+	public void remove(String url) {
+		//DML to enter in database
+	}
+	
+}

@@ -1,0 +1,47 @@
+package com.isp.searchengine;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.Statement;
+
+public class Create_tables {
+
+	public void create() {
+		Connection conn = null;
+		Statement stmt = null;
+		try {
+			Class.forName("org.postgresql.Driver");
+
+			String dbURL = "jdbc:postgresql://localhost:5432/postgres";
+			String user = "postgres";
+			String pass = "isproject";
+			conn = DriverManager.getConnection(dbURL, user, pass);
+			// System.out.println("Connection established "+ conn);
+			if (conn != null) {
+				// System.out.println("Opened database successfully to create:");
+
+				stmt = conn.createStatement();
+				String createfeaturessql = "CREATE TABLE IF NOT EXISTS features(docid integer,term text,term_freq integer,doc_freq integer, tf_idf_score float)";
+				String createdocumentsssql = "CREATE TABLE IF NOT EXISTS documents(docid integer,url text,crawled_date date)";
+				String createtemptable = "CREATE TABLE IF NOT EXISTS temptable(docid integer,url text)";
+				String linkstable = "CREATE TABLE IF NOT EXISTS links(from_docid integer,to_docid integer)";
+				String parsedtable = "CREATE TABLE IF NOT EXISTS parsedtable(docid integer,url text)";
+				System.out.println("All 5 tables created ");
+				stmt.executeUpdate(createfeaturessql);
+				stmt.executeUpdate(createdocumentsssql);
+				stmt.executeUpdate(createtemptable);
+				stmt.executeUpdate(linkstable);
+				stmt.executeUpdate(parsedtable);
+				// System.out.println("Create Table created");
+			}
+			stmt.close();
+			conn.close();
+
+		} catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+		// System.out.println("Operation done successfully");
+	}
+
+}

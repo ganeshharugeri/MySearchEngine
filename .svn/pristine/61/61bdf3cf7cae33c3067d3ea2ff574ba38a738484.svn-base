@@ -1,0 +1,105 @@
+package com.searchengine;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URL;
+import java.sql.SQLException;
+import java.util.HashMap;
+
+public class Indexer {
+	// English Stopwords List
+	String[] englishStopwordsArray = {"it", "every", "least", "less",
+			"many", "now", "ever", "never", "say", "says", "said", "also",
+			"get", "go", "goes", "just", "made", "make", "put", "see", "seen",
+			"whether", "like", "well", "back", "even", "still", "way", "take",
+			"since", "another", "however", "two", "three", "four", "five",
+			"first", "second", "new", "old", "high", "long", "again",
+			"further", "then", "once", "here", "there", "when", "where", "why",
+			"how", "all", "any", "both", "each", "few", "more", "most",
+			"other", "some", "such", "no", "nor", "not", "only", "own", "same",
+			"so", "than", "too", "very", "and", "but", "if", "or", "because",
+			"as", "until", "while", "of", "at", "by", "for", "with", "about",
+			"against", "between", "into", "through", "during", "before",
+			"after", "above", "below", "to", "from", "up", "down", "in", "out",
+			"on", "off", "over", "under", "a", "an", "the", "oughtn't",
+			"mightn't", "daren't", "needn't", "let's", "that's", "who's",
+			"what's", "here's", "there's", "when's", "where's", "why's",
+			"how's", "won't", "wouldn't", "shan't", "shouldn't", "can't",
+			"cannot", "couldn't", "mustn't", "isn't", "aren't", "wasn't",
+			"weren't", "hasn't", "haven't", "hadn't", "doesn't", "don't",
+			"didn't", "i'm", "you're", "he's", "she's", "it's", "we're",
+			"they're", "i've", "you've", "we've", "they've", "i'd", "you'd",
+			"he'd", "she'd", "we'd", "they'd", "i'll", "you'll", "he'll",
+			"she'll", "we'll", "they'll", "ought", "must", "may", "might",
+			"could", "can", "should", "shall", "will", "would", "do", "does",
+			"did", "doing", "have", "has", "had", "having", "am", "is", "are",
+			"was", "were", "be", "been", "being", "what", "which", "who",
+			"whom", "this", "that", "these", "those", "they", "them", "their",
+			"theirs", "themselves", "i", "me", "my", "the", "myself", "we",
+			"us", "usually", "our", "ours", "ourselves", "you", "your",
+			"yours", "yourself", "yourselves", "he", "him", "his", "himself",
+			"she", "her", "hers", "herself", "one", "its", "itself" };
+
+	// Function to Parse URL Content
+public boolean parse(String primURL, int docid) throws IOException, ClassNotFoundException, SQLException 
+{
+		URL url1 = new URL(primURL);
+		//Buffered object to stream through the URL content 
+		BufferedReader br = new BufferedReader(new InputStreamReader(url1.openStream()));
+		String inputline = "";
+		String contents = "";
+        // Reading the URL contents and storing in contents
+		while ((inputline = br.readLine()) != null) {
+			contents = contents + inputline;
+
+		}
+		
+		br.close();
+		//Parsing and removing the URL HTML content information orderly 
+		contents = contents.replaceAll("<script.*?</script>", " ")
+				.replaceAll("<style.*?</style>", " ").replaceAll("<.*?>", " ")
+				.replaceAll("[^a-zA-Z]", " ").replaceAll("\\s+", " ")
+				.toLowerCase().trim();
+		 
+		HashMap<String, Integer> englishstopwords = new HashMap<String, Integer>();
+		//Storing EnglishStopwords in HashMap
+        for (int i = 0; i < englishStopwordsArray.length; i++) 
+		{
+			englishstopwords.put(englishStopwordsArray[i], 1);
+		}
+
+      // Splitting each words in content by space and storing into keys
+		String[] keys = contents.split(" ");
+		// Initialising Stemmer object to use stem function 
+		Stemmer stemobj = new Stemmer();
+		HashMap<String, Integer> keywords = new HashMap<String, Integer>();
+		String stemmedkeyword = "";
+		
+		for (int j = 0; j < keys.length; j++) 
+		{
+	          //If not stopword continue to stem
+			if (!englishstopwords.containsKey(keys[j])
+					&& (keys[j].length() != 1)) {
+				char[] w = keys[j].toCharArray();
+				stemobj.add(w, keys[j].length());
+				stemobj.stem(); // Stemming
+				stemmedkeyword = stemobj.toString();
+			}
+
+			if (keywords.containsKey(stemmedkeyword)) 
+				keywords.put(stemmedkeyword, keywords.get(stemmedkeyword) + 1);
+			 else
+				keywords.put(stemmedkeyword, 1);
+
+
+		}
+		//Inserting value to features table
+		Storetables st = new Storetables();
+		st.storetofeatures(keywords, docid,primURL);
+        //returns true if parsed completely.
+		return true;
+	}
+
+}
+

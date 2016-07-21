@@ -1,0 +1,89 @@
+/**
+ * 
+ */
+package com.searchengine;
+
+import java.util.List;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+
+import org.la4j.matrix.Matrix;
+import org.la4j.matrix.sparse.CCSMatrix;
+import org.la4j.matrix.sparse.CRSMatrix;
+import org.la4j.matrix.sparse.SparseMatrix;
+
+
+/**
+ * @author ganeshharugeri
+ *
+ */
+public class PageRank {
+
+	static Storetables st = new Storetables();
+	static PreparedStatement ps = null;
+	static PreparedStatement ps1=null;
+	static ResultSet rs =null;
+	static ResultSet rs1=null;
+	static int size =0;
+	static HashMap<Integer,List<Integer>> hmLinks = new HashMap<Integer,List<Integer>>();
+	static SparseMatrix initialMat = new CCSMatrix(size,size);
+
+	
+	public static void getGraphDetails() throws ClassNotFoundException, SQLException{
+		
+		Connection conn = st.connects();
+		String nodecount = "SELECT count(*) FROM (SELECT from_docid FROM links UNION SELECT to_docid FROM links ) AS link WHERE link IS NOT NULL";
+		ps = conn.prepareStatement(nodecount);
+		rs = ps.executeQuery();
+		while (rs.next()) {
+			size = rs.getInt(1);
+		}		
+		System.out.println("Size: "+size);
+		 int[][] counts = new int[size][size];
+	     int[] outDegree = new int[size];
+		
+		 String allLinks ="Select * from links order by from_docid,to_docid";
+		 ps1 = conn.prepareStatement(allLinks);
+		 rs1 = ps1.executeQuery();
+		 while (rs1.next()) {
+			 System.out.println("From: "+rs1.getInt(1)+"  TO: "+rs1.getInt(2));
+		            int i = rs1.getInt(1); 
+		            int j = rs1.getInt(2); 
+		            System.out.println("i value:"+(i-1)+"j value: "+(j-1));
+		            outDegree[i-1]++; 
+		            counts[i-1][j-1]++;  
+			}	
+		 
+		 for (int i = 0; i < size; i++)  {
+
+	            // Print probability for column j. 
+	            for (int j = 0; j < size; j++) {
+	                double p = .90*counts[i][j]/outDegree[i] + .10/size; 
+	                System.out.printf("%7.5f", p); 
+	            } 
+	       System.out.println();
+	        } 
+
+//		 for(int r=0; r<size; r++) {
+//		       for(int c=0; c<size; c++)
+//		           System.out.print(counts[r][c] + " ");
+//		       System.out.println();
+//		    }
+			
+			
+	
+	}
+	
+	
+  public static void main(String[] args) throws ClassNotFoundException, SQLException{
+	  getGraphDetails();
+	  
+  }
+	
+}

@@ -1,0 +1,179 @@
+package com.searchengine;
+
+
+import java.awt.image.BufferedImage;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+
+import javax.imageio.ImageIO;
+import javax.servlet.ServletException;
+import javax.servlet.ServletOutputStream;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+
+/**
+ * Servlet implementation class Imgretrieve
+ */
+public class Imgretrieve extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+
+ 
+    public Imgretrieve() {
+        super();
+ 
+    }
+
+	protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException 
+	{
+		
+		Storetables st = new Storetables();
+		Stemmer stem= new Stemmer();
+		String stemmedkeyword="";
+   		Connection conn = null;
+        PreparedStatement orps = null;
+   		ResultSet rs1 = null;
+        String searchterm=request.getParameter("ImageSearch");
+   		String[] array = searchterm.split(" ");
+   		
+   		
+   		for (int j = 0; j < array.length; j++) {
+   			
+   			if (array[j].length() != 1) {
+   				char[] w = array[j].toCharArray();
+   				stem.add(w, array[j].length());
+   				stem.stem();
+   				stemmedkeyword = stem.toString();
+   				//keys.add(stemmedkeyword);
+   			}
+   		}
+        
+   		try {
+
+   			conn = st.connects();
+   			response.setContentType("text/html");
+   			//String ret = "select img_data,img_id from imagestable where img_title='anand' or img_title='bigg boss'";
+   			String ret = "select img_data from imagestable where img_id=0";
+   			String sql="select img_id,left_term,right_term from imagesfeaturestable where left_term=?";
+   			//System.out.println("select img_data,img_id from images where img_title='"+searchterm+"'");
+   			 orps = conn.prepareStatement(ret);
+   			PrintWriter outs= response.getWriter();
+   			 rs1 = orps.executeQuery();
+             int img_number = 1;
+             BufferedImage bi;
+            // OutputStream out = response.getOutputStream();
+             outs.println("<html><body>");
+  			//ServletOutputStream output = response.getOutputStream();
+            outs.println("<div id=header><h2 align=centre> G & G Image Search Results </h2> </div>");
+   			 String imgsrctags = "";
+   			 
+   			 List<ImageResultItem> images = new ArrayList<>();
+   			 while(rs1.next())
+   			 { 
+                 
+   				 
+ 				// byte[] bt = rs1.getBytes(1);
+   				String bt=rs1.getString(1);
+    				outs.println("<img src=\"data:image/png;base64,"+bt +"\""
+       				 		+ " style=\"width:300px;height:300px;padding:15px\""
+       				 		+ "/> ");
+//   				 img_number= rs1.getInt(2);
+//   				 String left = rs1.getString(1) , right = rs1.getString(2);
+//   				 // left.reverse
+//   				 // left stemmer, right stemmer query stemmer
+//   				 int left_pos = left.indexOf(""), right_pos = right.indexOf("");
+//   				 float left_score =0, right_score=0;
+//   				 if (left_pos > 0)
+//   					 left_score = left_pos/left.length();
+//   				 
+//   					 
+//   				 float score = Math.max(left_score, right_score);
+//   				
+//   				 ImageResultItem image = new ImageResultItem();
+//   				 image.score = score;
+//   				 image.url = "";
+//   				 image.image = rs1.getString(1);
+//   				 images.add(image);
+  
+
+
+   			 }
+   			 
+   			 Collections.sort(images, new Comparator<ImageResultItem>() {
+
+				@Override
+				public int compare(ImageResultItem o1, ImageResultItem o2) {
+					if (o1.score > o1.score)
+						return -1;
+					else if (o1.score < o2.score)
+						return 1;
+					else
+						return 0;
+				}
+			});
+   			 
+//   			 for (int i =0; i < 20; i++) {
+//   				outs.println("<img src=\"data:image/png;base64,"+images.get(i).image +"\""
+//   				 		+ " style=\"width:200px;height:200px;padding:10px\""
+//   				 		+ "/> ");
+//   			 }
+  
+   		}
+   		catch (ClassNotFoundException | SQLException e)
+   		{
+			
+			e.printStackTrace();
+		}
+   		
+   	
+	}
+		
+//	     bi=createImageFromBytes(bt);
+//	 OutputStream out = response.getOutputStream();
+//	 ImageIO.write(bi, "jpg", out);
+	public static String getFullURL(HttpServletRequest request) 
+	{
+		StringBuffer requestURL = request.getRequestURL();
+		String queryString = request.getQueryString();
+
+		if (queryString == null) {
+		        return requestURL.toString();
+		} else {
+		        return requestURL.append('?').append(queryString).toString();
+		}
+	}	
+
+	public static BufferedImage createImageFromBytes(byte[] imageData) {
+			ByteArrayInputStream bais = new ByteArrayInputStream(imageData);
+			try {
+			return ImageIO.read(bais);
+			} catch (IOException e) {
+			throw new RuntimeException(e);
+			}
+			}
+	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+	
+		doGet(request, response);
+	}
+
+	class ImageResultItem {
+		public float score;
+		public String image;
+		public String url;
+	}
+	
+}

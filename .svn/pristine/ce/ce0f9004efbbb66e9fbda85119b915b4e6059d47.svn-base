@@ -1,0 +1,122 @@
+/**
+ * 
+ */
+package com.searchengine;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import org.la4j.matrix.SparseMatrix;
+import org.la4j.matrix.sparse.CCSMatrix;
+
+/**
+ * @author ganeshharugeri
+ *
+ */
+public class PageRank {
+
+	Storetables st = new Storetables();
+	PreparedStatement ps = null,ps1=null,ps2=null,ps3=null,ps4=null,ps5=null;
+	ResultSet rs = null;
+	ResultSet rs1 = null;
+	int size = 0;
+
+	// static SparseMatrix initialMat = new CCSMatrix(size,size);
+
+	public void getGraphDetails() throws ClassNotFoundException,
+			SQLException {
+
+		Connection conn = st.connects();
+		String nodecount = "SELECT count(*) FROM (SELECT from_docid FROM links UNION SELECT to_docid FROM links ) AS link WHERE link IS NOT NULL";
+		ps = conn.prepareStatement(nodecount);
+		rs = ps.executeQuery();
+		while (rs.next()) {
+			size = rs.getInt(1);
+		}
+		System.out.println("Size: " + size);
+		//Main Matrix
+		SparseMatrix mainMatrix = new CCSMatrix(size, size);
+		//Transition Matrix
+		SparseMatrix transMatrix = new CCSMatrix(size, size);
+		//Pagerank Matrix
+		CCSMatrix pr = new CCSMatrix(1, size);
+		CCSMatrix verify =new CCSMatrix();
+		SparseMatrix.zero(size, size);
+		// int[][] counts = new int[size+1][size+1];
+		int[] outDegree = new int[size];
+
+		String allLinks = "Select * from links order by from_docid,to_docid";
+		ps1 = conn.prepareStatement(allLinks);
+		rs1 = ps1.executeQuery();
+		while (rs1.next()) {
+			// System.out.println("From: "+rs1.getInt(1)+"  TO: "+rs1.getInt(2));
+			int i = rs1.getInt(1);
+			int j = rs1.getInt(2);
+			outDegree[i]++;
+			// System.out.println("outDegree after: "+outDegree[i]);
+			// counts[i][j]++;
+			mainMatrix.set(i, j, mainMatrix.get(i, j) + 1);
+
+		}
+		//System.out.println(mainMatrix.toCSV());
+		double randomJump = 0.10 / size;
+		//System.out.println("Transition matrix calc>>");
+		for (int i = 0; i < size; i++) {
+			// Print probability for column j.
+			for (int j = 0; j < size; j++) {
+				double p = 0.90 * mainMatrix.get(i, j) / outDegree[i] + randomJump;
+				// System.out.println("P value:"+p);
+				if (Double.isNaN(p))
+					transMatrix.set(i, j, randomJump);
+				else
+					transMatrix.set(i, j, p);
+			}
+		}
+		System.out
+				.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>TRANSMATRIX>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+		//System.out.println(transMatrix.toCSV());
+
+		pr.set(0, 0, 1);
+		System.out
+				.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>InitialVECTOR>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+		//System.out.println(pr.toCSV());
+
+		for (int i = 0; i < 20; i++) {
+			CCSMatrix prtemp = new CCSMatrix(1,size);
+			prtemp = (CCSMatrix) prtemp.add((CCSMatrix) pr.multiply(transMatrix));
+			System.out
+					.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PAGERANK>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+			System.out.println(prtemp.toCSV());
+			//verify = (CCSMatrix) pr.subtract(prtemp);
+			pr =prtemp;
+//			System.out
+//			.println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Difference>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+		}
+		
+		
+		for(int m=0; m<size;m++){
+			System.out.println(pr.get(0,m));
+			String prscore = "update features set pr_score="+pr.get(0, m)+"where docid= "+m;
+			ps2=conn.prepareStatement(prscore);
+			ps2.executeUpdate();
+			}
+			String normalised_bm25score = "update features f set normalised_bm25score=(Z.bm25_score - X.min)/(X.max-X.min)  from (select max(bm25_score) as max, min(bm25_score) as min from features) X, features Z where f.docid=z.docid";
+			String normalised_prscore = "update features f set normalised_prscore=(Z.pr_score - X.min)/(X.max-X.min)  from (select max(pr_score) as max, min(pr_score) as min from features) X, features Z where f.docid=z.docid";
+			String combined_score = "update features set combined_score = (normalised_bm25score + normalised_prscore)/2";
+			ps3= conn.prepareStatement(normalised_bm25score);
+			ps3.executeUpdate();
+			ps4= conn.prepareStatement(normalised_prscore);
+			ps4.executeUpdate();
+			ps5= conn.prepareStatement(combined_score);
+			ps5.executeUpdate();
+	}
+
+//	public static void main(String[] args) throws ClassNotFoundException,
+//			SQLException {
+//		getGraphDetails();
+//
+//	}
+
+}

@@ -1,0 +1,67 @@
+/**
+ * 
+ */
+package com.searchengine;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+
+/**
+ * @author ganeshharugeri
+ *
+ */
+public class Snippets {
+	static Storetables st = new Storetables();
+	static Connection conn = null;
+
+	// Store pagecontents in db
+	public static void storeContents(int docid, String title, String pagecontent)
+			throws SQLException {
+		PreparedStatement ps = null;
+		try {
+			conn = st.connects();
+			// query to store unique documents to snippets table
+			String storeText = "INSERT INTO snippets(docid,title,pagecontent) SELECT ?, ?, ? WHERE NOT EXISTS (SELECT docid FROM snippets WHERE docid =?)";
+			ps = conn.prepareStatement(storeText);
+			ps.setInt(1, docid);
+			ps.setString(2, title);
+			ps.setString(3, pagecontent);
+			ps.setInt(4, docid);
+
+			ps.executeUpdate();
+		} catch (ClassNotFoundException | SQLException e) {
+			e.printStackTrace();
+		} finally {
+			if (ps != null)
+				ps.close();
+			if (conn != null)
+				conn.close();
+		}
+	}
+
+	public static void updateSnippetTable() throws SQLException {
+		PreparedStatement ps1 = null, ps2 = null;
+		try {
+			conn = st.connects();
+
+			// convert documents to tsvector using corresponding language configuration
+			String updateGSnippet = "update snippets s set vector = k.vector from (select docid,to_tsvector('german', pagecontent) as vector from snippets JOIN features using(docid) where language = 'german') k  where k.docid = s.docid";
+			String updateESnippet = "update snippets s set vector = k.vector from (select docid,to_tsvector('english', pagecontent) as vector from snippets JOIN features using(docid) where language = 'english') k  where k.docid = s.docid";
+			ps1 = conn.prepareStatement(updateGSnippet);
+			ps2 = conn.prepareStatement(updateESnippet);
+			ps1.executeUpdate();
+			ps2.executeUpdate();
+		} catch (ClassNotFoundException | SQLException e) {
+			e.printStackTrace();
+		} finally {
+			if (ps1 != null)
+				ps1.close();
+			if (ps2 != null)
+				ps2.close();
+			if (conn != null)
+				conn.close();
+		}
+	}
+
+}

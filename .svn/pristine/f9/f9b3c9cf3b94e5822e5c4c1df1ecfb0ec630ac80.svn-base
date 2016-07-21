@@ -1,0 +1,148 @@
+package com.isp.searchengine;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Scanner;
+
+public class Query_process {
+	static Storetables st = new Storetables();
+	private static Scanner in;
+
+	public static void main(String[] args) throws Exception {
+		in = new Scanner(System.in);
+		String query = null, querytype = null;
+		int limit = 0;
+		// Get the details from user
+		System.out.println("\n Enter the query terms");
+		query = in.nextLine();
+
+		System.out.println("\n Enter number of documents to be retrieved: ");
+		limit = in.nextInt();
+		if (in.hasNextLine()) {
+			in.nextLine();
+		}
+		System.out
+				.println("Enter the type of query: C: Conjunctive /D: Disjunctive ");
+		while (true) {
+			String ans = in.nextLine().trim().toLowerCase();
+			if (ans.equals("c")) {
+				querytype = ans;
+				break;
+			} else if (ans.equals("d")) {
+				querytype = ans;
+				break;
+			} else {
+				System.out.println("Only c/d is allowed");
+			}
+		}
+		// Collect the query terms
+		ArrayList<String> terms = new ArrayList<String>(Arrays.asList(query
+				.split(" ")));
+
+		// Based on users choice call the functions accordingly
+		if (querytype.equalsIgnoreCase("d")) {
+			disjunctive(terms, limit);
+		} else if (querytype.equalsIgnoreCase("c")) {
+			conjunctive(terms, limit);
+		}
+	}
+
+	// Disjunctive query processing
+	public static void disjunctive(ArrayList<String> terms, int limit)
+			throws ClassNotFoundException, SQLException {
+		System.out.println("Disjunctive Query Results");
+		Connection conn = st.connects();
+		PreparedStatement orps = null;
+		ResultSet orrs = null;
+		int z = 1;
+		try {
+			if (conn != null) {
+				// Query to get documents containing any of the query terms
+				StringBuilder orquery = new StringBuilder(
+						"select distinct(url),fs.tf_idf_score from documents d,features fs where fs.term = ");
+				for (int i = 0; i < terms.size(); i++) {
+					if (i > 0) {
+						orquery.append(" or fs.term =");
+					}
+					orquery.append("?");
+				}
+				orquery.append("and fs.docid= d.docid order by tf_idf_score desc;");
+				orps = conn.prepareStatement(orquery.toString());
+				// System.out.println("OR query: " + orquery);
+				for (int m = 0; m < terms.size(); m++) {
+					orps.setString(m + 1, terms.get(m));
+				}
+				orrs = orps.executeQuery();
+				while (orrs.next() && z <= limit) {
+					System.out.format("\n%2d %20s   %3f", z, orrs.getString(1),
+							orrs.getFloat(2));
+					z++;
+				}
+
+			}
+		} catch (Exception e) {
+			System.err.println(" Exception in disjunctive method" + e);
+		} finally {
+			if (orps != null)
+				orps.close();
+			if (orrs != null)
+				orrs.close();
+			if (conn != null)
+				conn.close();
+		}
+
+	}
+
+	// Conjunctive query processing
+	public static void conjunctive(ArrayList<String> terms, int limit)
+			throws ClassNotFoundException, SQLException {
+		System.out.println("Conjunctive Query Results");
+		Connection conn = st.connects();
+		PreparedStatement andps = null;
+		ResultSet andrs = null;
+		int z = 1;
+		try {
+			if (conn != null) {
+				// Query to get documents containing all of the query terms
+				StringBuilder andquery = new StringBuilder(
+						"SELECT url, sum(tf_idf_score) FROM   documents d JOIN   features f USING (docid) WHERE f.term IN (");
+				for (int l = 0; l < terms.size(); l++) {
+					if (l > 0)
+						andquery.append(",");
+					andquery.append("?");
+				}
+				andquery.append(")").append(
+						"GROUP BY url,f.tf_idf_score HAVING COUNT(*) = "
+								+ terms.size()
+								+ " order by f.tf_idf_score desc");
+
+				// System.out.println("And query :" + andquery);
+				andps = conn.prepareStatement(andquery.toString());
+				for (int n = 0; n < terms.size(); n++) {
+					andps.setString(n + 1, terms.get(n));
+				}
+				andrs = andps.executeQuery();
+			}
+
+			while (andrs.next() && z <= limit) {
+				System.out.format("\n%2d %20s  %3f", z, andrs.getString(1),
+						andrs.getFloat(2));
+				z++;
+			}
+
+		} catch (Exception e) {
+			System.err.println(" Exception in conjunctive method" + e);
+		} finally {
+			if (andps != null)
+				andps.close();
+			if (andrs != null)
+				andrs.close();
+			if (conn != null)
+				conn.close();
+		}
+	}
+}

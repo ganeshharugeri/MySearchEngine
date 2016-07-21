@@ -1,0 +1,92 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * Servlet implementation class Readcrawleroptions
+ */
+
+//Class to Read Advanced Crawler options
+public class Readcrawleroptions extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+       
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public Readcrawleroptions() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+	@SuppressWarnings({ "static-access", "static-access", "static-access" })
+	protected void doGet(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+
+		// Get the Entered the details
+		String host_url = request.getParameter("hosturl");
+		int max_depth = Integer.parseInt(request.getParameter("maxdepth"));
+		int max_no_of_docs = Integer.parseInt(request
+				.getParameter("max_no_of_doc"));
+		String domain = request.getParameter("domain");
+		PrintWriter output = response.getWriter();
+		long startTime, endTime, totalTime;
+		// Printing in console to verify input stored in String and int
+		// variables
+		System.out.println(" Host URL Entered is : " + host_url);
+		System.out.println(" Maximum Depth is : " + max_depth);
+		System.out.println(" Maximum Depth is : " + max_no_of_docs);
+		System.out.println(" Domain option: " + domain);
+
+		// Instantiate Crawl object
+		Crawl send = new Crawl();
+		// Start time recorded
+		startTime = System.currentTimeMillis();
+
+		try {
+			// Calling Mainfunction of Crawler to start the crawling process
+			int recieve = send.startCrawling(host_url, max_depth,
+					max_no_of_docs, domain);
+			if (recieve == -1) {
+				output.println("In Domain field only y/n is allowed. Please try again");
+			}
+			else {
+				// If crawler completes task successfully it sends total number
+				// of document parsed
+				// End time recorded
+				endTime = System.currentTimeMillis();
+				// Total time is printed
+				totalTime = endTime - startTime;
+				output.println("<div id=header><h2 color=blue> G & G Crawled Results </h2> </div>");
+				output.println("\n\n");
+				output.println("<h3> Documents crawled: " + recieve + "</h3>");
+				output.println("<h3>Time taken: " + ((totalTime/ 1000) / 60) + " seconds</h3>");
+
+			}
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse
+	 *      response)
+	 */
+	protected void doPost(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		doGet(request, response);
+	}
+
+}

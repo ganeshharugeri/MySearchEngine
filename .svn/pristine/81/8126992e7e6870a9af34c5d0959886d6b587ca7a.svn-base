@@ -1,0 +1,141 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.io.PrintWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * @author ganeshharugeri Servlet implementation class Metasearch_servlet
+ */
+@WebServlet("/Metasearch_servlet")
+public class Metasearch_servlet extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+
+	public Metasearch_servlet() {
+		super();
+	}
+
+	JSONParser jp = new JSONParser();
+	Storetables st = new Storetables();
+	Connection conn = null;
+	PreparedStatement meta_ps = null;
+	ResultSet mets_rs = null;
+	protected void doGet(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+		response.setContentType("text/html");
+		PrintWriter out = response.getWriter();
+		// ArrayList<Integer> count = new ArrayList<Integer>();
+		HashSet<Integer> count = new HashSet<>();
+
+		String names = request.getParameter("metasearchname");
+		ArrayList<String> keys = new ArrayList<String>(Arrays.asList(names
+				.split(" ")));
+		System.out.println(" Entered string is> " + names);
+		try {
+			String[] options = request.getParameterValues("options");
+			for (String op : options) {
+				System.out.println(" Entered options are> " + op);
+				Integer i = Integer.parseInt(op.substring(op.length() - 1,
+						op.length()));
+				count.add(i);
+				// System.out.println("Group number:" + i);
+			}
+			System.out.println("Groups selectd from Preferences: >> "
+					+ count.toString());
+			// check for stats availability
+			HashSet<Integer> statcount = new HashSet<>();
+			statcount = jp.checkStat(names);
+			// take union of count and statcount and send it to fetch json
+			for (Integer s : statcount)
+				count.add(s);
+			System.out.println("Groups after stat check: >> "
+					+ count.toString());
+			// if there are collections having query terms send it to them
+			if (!count.isEmpty()) {
+				for (int i1 : count) {
+					// System.out.println("in if: " + i1);
+					jp.formURL(names, i1);
+				}
+			} else {
+				// else send it to all search engines
+				for (int j = 1; j < 9; j++) {
+					// System.out.println("in else: " + j);
+					jp.formURL(names, j);
+				}
+			}
+
+			// }
+			// Calculate other meta parameters
+			JSONParser.calculateMetaInfo();
+			// Print results start
+			
+			conn = st.connects();
+			out.println("<div id=header><h2 align=centre> G & G Search Results </h2> </div>");
+			out.println("<div id=header><h4 align=centre>Search results for :"
+					+ names + "</h2> </div>");
+			out.println("<table border=1> <tr><th> RANK    </th> <th padding: 5px;>   URL    </th> <th>   Score   </th></tr>");
+			StringBuilder metaquery = new StringBuilder();
+			// sitequery.append("select url from documents where url like '%"
+			// + sitestring + "%'");
+			metaquery
+					.append("select  url,dscore from metaurldetails where term in (");
+			for (int i = 0; i < keys.size(); i++) {
+				if (i > 0) {
+					metaquery.append(",");
+				}
+				metaquery.append("?");
+			}
+			metaquery.append(")").append(" order by dscore desc;");
+			meta_ps = conn.prepareStatement(metaquery.toString());
+			for (int m = 0; m < keys.size(); m++) {
+				// System.out.println("Key values in Names : "+keys.get(m));
+				meta_ps.setString(m + 1, keys.get(m));
+			}
+			System.out.println("Meta query: " + meta_ps.toString());
+			mets_rs = meta_ps.executeQuery();
+			int z = 1;
+			while (mets_rs.next() && z <= 20) {
+				System.out.println("\n" + mets_rs.getString(1)
+						+ " meta score: " + mets_rs.getFloat(2));
+				out.print("<tr><td>" + z + "</td> <td padding: 5px;><a href=#>"
+						+ mets_rs.getString(1) + "</a></td> <td> "
+						+ mets_rs.getFloat(2) + "</td></tr>");
+				z++;
+			}
+			out.println("</table>");
+			// Print results end
+
+		} catch (SQLException | ClassNotFoundException e) {
+			e.printStackTrace();
+		}finally{
+			try {
+			if (meta_ps != null)
+					meta_ps.close();
+			if (conn != null)
+				conn.close();
+			} catch (SQLException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+	}
+
+	protected void doPost(HttpServletRequest request,
+			HttpServletResponse response) throws ServletException, IOException {
+
+		doGet(request, response);
+
+	}
+
+}

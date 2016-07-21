@@ -1,0 +1,206 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * Servlet implementation class Search_servlet
+ */
+@WebServlet("/Search_servlet")
+public class Search_servlet extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+       
+    /**
+     * @see HttpServlet#HttpServlet()
+     */
+    public Search_servlet() {
+        super();
+        // TODO Auto-generated constructor stub
+    }
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse response)
+	 */
+    private ArrayList<String> keys = new ArrayList<String>();
+
+   	protected void doGet(HttpServletRequest request, HttpServletResponse response)
+   			throws ServletException, IOException {
+
+   		response.setContentType("text/html");
+   		Stemmer stemObj = new Stemmer();
+   		String names = request.getParameter("searchname");
+   		System.out.println(" Entered string is " + names);
+   		boolean andflag = false, siteflag = false;
+   		ArrayList<String> quoteskey = new ArrayList<String>();
+   		String sitestring = "";
+
+   		if (names.contains("site:")) {
+   			siteflag = true;
+   			sitestring = names.substring(names.indexOf(":") + 1, names.length());
+   			System.out.println("The entered quotes string :" + sitestring);
+
+   		}
+
+   		String temp = names.replaceAll("[“”]", "");
+
+   		String stemmedkeyword = null;
+   		String[] array = temp.split(" ");
+   		for (int j = 0; j < array.length; j++) {
+   			if (array[j].length() != 1) {
+   				char[] w = array[j].toCharArray();
+   				stemObj.add(w, array[j].length());
+   				stemObj.stem();
+   				stemmedkeyword = stemObj.toString();
+   				keys.add(stemmedkeyword);
+   				// System.out.println("test stem:" + stemmedkeyword);
+   			}
+   		}
+
+   		if ((names.contains("“") | (names.contains("”")) | (names.contains("\"")))) {
+   			// System.out.println("Entering the regex section");
+   			andflag = true;
+   			Pattern p = Pattern.compile("“([^“”\"]*)”");
+   			Matcher m = p.matcher(names);
+   			while (m.find()) {
+   				quoteskey.add(m.group(1));
+   			}
+   		}
+
+   		ArrayList<String> andarray = new ArrayList<String>();
+   		ArrayList<Float> andarraytf = new ArrayList<Float>();
+
+   		PrintWriter out = response.getWriter();
+   		Storetables st = new Storetables();
+   		Connection conn = null;
+
+   		PreparedStatement orps = null, andps = null, srps = null;
+   		ResultSet rs1 = null, rs2 = null, rs3 = null;
+
+   		try {
+   			conn = st.connects();
+   			if (!siteflag) 
+   			{
+   				out.println("<div id=header><h2 align=centre> G & G Search Results </h2> </div>");
+   				out.println(
+   						"<table border=1> <tr><th> RANK        </th> <th padding: 5px;>   URL    </th> <th>  TF_IDF- Score </th></tr>");
+
+   				// OR Query - string with no quotes
+
+   				StringBuilder orquery = new StringBuilder(
+   						"select distinct(url),fs.tf_idf_score from documents d,features fs where fs.term in (");
+   				for (int i = 0; i < keys.size(); i++) {
+   					if (i > 0) {
+   						orquery.append(",");
+   					}
+   					orquery.append("?");
+   				}
+   				orquery.append(")").append("and fs.docid= d.docid order by tf_idf_score desc;");
+   				orps = conn.prepareStatement(orquery.toString());
+   				// System.out.println("OR query: " + orquery);
+   				for (int m = 0; m < keys.size(); m++) {
+   					// System.out.println("Key values : " + keys.get(m));
+   					orps.setString(m + 1, keys.get(m));
+   				}
+   				rs1 = orps.executeQuery();
+   				int z = 1;
+   				while (rs1.next() && !andflag && z <= 20) {
+   					System.out.println("\n url:" + rs1.getString(1) + " tfidf score: " + rs1.getFloat(2));
+   					out.print("<tr><td>" + z + "</td> <td padding: 5px;><a href=#>" + rs1.getString(1)
+   							+ "</a></td> <td> " + rs1.getFloat(2) + "</td></tr>");
+
+   					z++;
+   				}
+   			}
+
+   			if (andflag && !siteflag) {
+   				// System.out.println(" Entering AND query");
+   				StringBuilder andquery = new StringBuilder(
+   						"select distinct(url),tf_idf_score from features f,documents d where f.docid = d.docid and f.term in (");
+   				for (int i = 0; i < quoteskey.size(); i++) {
+   					if (i > 0) {
+   						andquery.append(",");
+   					}
+   					andquery.append("?");
+   				}
+   				andquery.append(")").append("and f.docid in (select distinct(docid) from features where term in (");
+   				for (int l = 0; l < keys.size(); l++) {
+   					if (l > 0)
+   						andquery.append(",");
+   					andquery.append("?");
+   				}
+   				andquery.append("))").append("order by tf_idf_score desc");
+   				System.out.println("And query :" + andquery);
+   				andps = conn.prepareStatement(andquery.toString());
+   				for (int n = 0; n < quoteskey.size(); n++) {
+   					System.out.println("quoteskey.size(): " + quoteskey.size());
+   					andps.setString(n + 1, quoteskey.get(n));
+   				}
+   				int r = keys.size() + quoteskey.size();
+   				for (int f = quoteskey.size(); f < r; f++) {
+   					andps.setString(f + 1, keys.get(f - 1));
+   				}
+   				rs2 = andps.executeQuery();
+   				int y = 1;
+   				while (rs2.next() && y <= 20) {
+   					System.out.println("Url in and :" + rs2.getString(1) + " tfidf score: " + rs2.getFloat(2));
+   					andarray.add(rs2.getString(1));
+   					andarraytf.add(rs2.getFloat(2));
+   					out.print("<tr><td>" + y + "</td> <td padding: 5px;><a href=#>" + rs2.getString(1)
+   							+ "</a></td> <td> " + rs2.getFloat(2) + "</td></tr>");
+
+   					y++;
+   				}
+   			}
+
+   			if (siteflag) {
+   				out.println("<table border=1> <tr><th> RANK    </th> <th padding: 5px;>   URL    </th></tr>");
+
+   				String sitequery = "select url from documents where url like '%" + sitestring + "%'";
+
+   				srps = conn.prepareStatement(sitequery);
+   				rs3 = srps.executeQuery();
+   				int z = 1;
+   				while (rs3.next() && z <= 20) {
+   					System.out.println("\n url:" + rs3.getString(1));
+
+   					System.out.println("I am in Site: print");
+   					out.print("<tr><td>" + z + "</td> <td padding: 5px;><a href=#>" + rs3.getString(1)
+   							+ "</a></td></tr>");
+
+   					z++;
+   				}
+   			}
+   			out.println("</table>");
+   			conn.close();
+   		}
+
+   		catch (SQLException e) {
+   			// TODO Auto-generated catch block
+   			e.printStackTrace();
+   		} catch (ClassNotFoundException e) {
+   			// TODO Auto-generated catch block
+   			e.printStackTrace();
+   		}
+
+   	}
+
+   	protected void doPost(HttpServletRequest request, HttpServletResponse response)
+   			throws ServletException, IOException {
+   		// TODO Auto-generated method stub
+   		doGet(request, response);
+   	}
+
+   }

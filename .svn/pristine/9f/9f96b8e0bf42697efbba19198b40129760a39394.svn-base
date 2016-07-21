@@ -1,0 +1,77 @@
+<!DOCTYPE web-app PUBLIC
+ "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+ "http://java.sun.com/dtd/web-app_2_3.dtd" >
+
+<web-app>
+  <display-name>Archetype Created Web Application</display-name>
+  <servlet>
+  	<servlet-name>TestServletorandquery</servlet-name>
+  	<display-name>TestServletorandquery</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.TestServletorandquery</servlet-class>
+  </servlet>
+  <servlet>
+  	<servlet-name>Search_servlet</servlet-name>
+  	<display-name>Search_servlet</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.Search_servlet</servlet-class>
+  </servlet>
+  <servlet>
+  	<servlet-name>Readcrawleroptions</servlet-name>
+  	<display-name>Readcrawleroptions</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.Readcrawleroptions</servlet-class>
+  </servlet>
+  <servlet>
+  	<servlet-name>JSONformat</servlet-name>
+  	<display-name>JSONformat</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.JSONformat</servlet-class>
+  </servlet>
+  <servlet>
+  	<servlet-name>Demo_JSON_search</servlet-name>
+  	<display-name>Demo_JSON_search</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.Demo_JSON_search</servlet-class>
+  </servlet>
+  <servlet>
+  	<servlet-name>Search_Servlet_German</servlet-name>
+  	<display-name>Search_Servlet_German</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.Search_Servlet_German</servlet-class>
+  </servlet>
+  <servlet>
+  	<servlet-name>Jsonresult</servlet-name>
+  	<display-name>Jsonresult</display-name>
+  	<description></description>
+  	<servlet-class>com.searchengine.Jsonresult</servlet-class>
+  </servlet>
+  <servlet-mapping>
+  	<servlet-name>TestServletorandquery</servlet-name>
+  	<url-pattern>/TestServletorandquery</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
+  	<servlet-name>Search_servlet</servlet-name>
+  	<url-pattern>/Search_servlet</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
+  	<servlet-name>Readcrawleroptions</servlet-name>
+  	<url-pattern>/Readcrawleroptions</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
+  	<servlet-name>JSONformat</servlet-name>
+  	<url-pattern>/JSONformat</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
+  	<servlet-name>Demo_JSON_search</servlet-name>
+  	<url-pattern>/Demo_JSON_search</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
+  	<servlet-name>Search_Servlet_German</servlet-name>
+  	<url-pattern>/Search_Servlet_German</url-pattern>
+  </servlet-mapping>
+  <servlet-mapping>
+  	<servlet-name>Jsonresult</servlet-name>
+  	<url-pattern>/Jsonresult</url-pattern>
+  </servlet-mapping>
+</web-app>

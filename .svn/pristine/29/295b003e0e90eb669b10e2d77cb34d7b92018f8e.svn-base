@@ -1,0 +1,201 @@
+/**
+ * 
+ */
+package com.searchengine;
+
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
+
+import edu.mit.jwi.Dictionary;
+import edu.mit.jwi.IDictionary;
+import edu.mit.jwi.item.IIndexWord;
+import edu.mit.jwi.item.ISynset;
+import edu.mit.jwi.item.IWord;
+import edu.mit.jwi.item.IWordID;
+import edu.mit.jwi.item.POS;
+import edu.mit.jwi.morph.WordnetStemmer;
+
+/**
+ * @author ganeshharugeri
+ *
+ */
+public class QueryExpansion {
+
+	public static ArrayList<String> tildeOperations(String names)
+			throws IOException {
+		System.out.println("Entering tilde..");
+		ArrayList<String> tildewords = new ArrayList<String>();
+		for (int i = 0; i < names.length(); i++) {
+			if (names.charAt(i) == '~') {
+				String tildeString = names.substring(i + 1, names.length());
+				String word = "";
+				if (!(tildeString.indexOf(" ") <= 0))
+					word = tildeString.substring(0, tildeString.indexOf(" "));
+				else
+					word = tildeString.substring(0, tildeString.length());
+
+				tildewords.add(word);
+			}
+		}
+		System.out.println("Tilde words>>>"
+				+ Arrays.toString(tildewords.toArray()));
+		return tildewords;
+	}
+
+	public static String getNames(String names) {
+		names = names.replace("~", "").replaceAll("\\s+", " ");
+		System.out.println("Updated after tilde:" + names);
+		return names;
+
+	}
+
+	public static ArrayList<String> getSynonyms(String tildeWord)
+			throws IOException {
+		ArrayList<String> synonyms = new ArrayList<String>();
+		ArrayList<POS> allPOS = new ArrayList<POS>();
+		// String wnhome = System.getenv("WNHOME");
+		// System.out.println(wnhome);
+		// 'path' holds the loaction of the WordNet dictionary files.
+		String path = "/Users/ganeshharugeri/Documents/workspace/WordNet-3.0/dict";
+		// System.out.println("Path>>" + path);
+		URL url = null;
+		try {
+			url = new URL("file", null, path);
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+		}
+		// System.out.println("url>>>" + url);
+		if (url != null) {
+			/*
+			 * Idictionary is an interface to access dictionary files construct
+			 * the dictionary object and open it
+			 */
+			IDictionary dict = new Dictionary(url);
+			dict.open();
+			WordnetStemmer stemmer = new WordnetStemmer(dict);
+
+			for (POS pos : POS.values()) {
+				// Check every stem, because WordNet doesn't have every surface
+				// form in its database.
+				for (String stem : stemmer.findStems(tildeWord, pos)) {
+					IIndexWord iw = dict.getIndexWord(stem, pos);
+					if (iw != null) {
+						allPOS.add(pos);
+					}
+				}
+			}
+			System.out.println("All POS: " + Arrays.toString(allPOS.toArray()));
+
+			for (POS pos : allPOS) {
+				System.out.println("POS:>>" + pos);
+				System.out.println("tildeWord:>>" + tildeWord);
+				IIndexWord idxWord = dict.getIndexWord(tildeWord, pos);
+				// System.out.println("idxWord: "+idxWord);
+				if (idxWord != null) {
+					IWordID wordID = idxWord.getWordIDs().get(0);
+					IWord iword = dict.getWord(wordID);
+					// System.out.println("Id = " + wordID);
+					// System.out.println("Lemma = " + iword.getLemma());
+					ISynset iSynset = iword.getSynset();
+					for (IWord iMember : iSynset.getWords()) {
+						System.out.println("Synonums for the POS " + pos
+								+ " are: " + iMember.getLemma());
+						synonyms.add(iMember.getLemma());
+					}
+				}
+			}
+		}
+		return synonyms;
+	}
+
+	public static String buildTildeQuery(String names) throws IOException {
+
+		ArrayList<String> namesList = new ArrayList<String>(Arrays.asList(names
+				.split(" ")));
+
+		StringBuilder tildeQuery = new StringBuilder(
+				"select distinct(url), title");
+
+		for (int i = 0; i < namesList.size(); i++) {
+
+			if (namesList.size() > 1) {
+				// System.out.println("\n more than one word loop");
+				tildeQuery
+						.append(", ts_headline('english', pagecontent, to_tsquery");
+				if (namesList.get(i).startsWith("~"))
+					tildeQuery.append(getSynQuery(namesList.get(i), names));
+				else
+					tildeQuery.append("(' " + namesList.get(i) + " ')");
+
+				tildeQuery.append(", 'MaxWords="
+						+ (int) (32 / namesList.size())
+						+ ", MinWords=8, ShortWord=3')");
+			} else {
+				// System.out.println("\n one word loop");
+				if (namesList.get(i).startsWith("~"))
+					tildeQuery
+							.append(",ts_headline('english', pagecontent, to_tsquery"
+									+ getSynQuery(namesList.get(i), names));
+				else
+					tildeQuery
+							.append(", ts_headline('english', pagecontent, to_tsquery(' "
+									+ namesList.get(i) + " ')");
+
+				tildeQuery.append(",'MaxWords=32, MinWords=8, ShortWord=3')");
+
+			}
+		}
+
+		tildeQuery
+				.append(", fs.pr_score pr, ts_rank(vector, query) AS rank from documents d,features fs,snippets i, to_tsquery(' ");
+		for (int j = 0; j < namesList.size(); j++) {
+			if (j > 0)
+				tildeQuery.append(" & ");
+
+			if (namesList.get(j).startsWith("~")) {
+				tildeQuery.append(getSynQuery(namesList.get(j), names)
+						.replaceAll("'", ""));
+			} else
+				tildeQuery.append(namesList.get(j));
+		}
+
+		tildeQuery
+				.append(" ') query where fs.language='english' and fs.docid= d.docid and fs.docid=i.docid and pagecontent @@ query order by pr desc, rank desc");
+
+		System.out.println("TILDE QUERY: " + tildeQuery);
+		return (tildeQuery.toString());
+
+	}
+
+	public static String getSynQuery(String tildeword, String names)
+			throws IOException {
+		// System.out.println("\nEntring getSynQuery");
+		tildeword = getNames(tildeword);
+		// System.out.println("Tildeword trimmed: "+tildeword);
+		names = getNames(names);
+		// System.out.println("names trimmed: "+names);
+
+		ArrayList<String> namesList = new ArrayList<String>(Arrays.asList(names
+				.split(" ")));
+		// System.out.println("NamesList: "+namesList);
+		ArrayList<String> synonyms = new ArrayList<String>();
+		StringBuilder syngroup = new StringBuilder();
+		for (String word : namesList) {
+			if (tildeword.equals(word)) {
+				synonyms = getSynonyms(word);
+				syngroup.append(" (' " + word);
+				for (int j = 0; j < synonyms.size(); j++) {
+					syngroup.append(" | " + synonyms.get(j));
+				}
+				syngroup.append(" ') ");
+
+			}
+		}
+
+		return syngroup.toString();
+	}
+
+}

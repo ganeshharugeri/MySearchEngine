@@ -1,0 +1,436 @@
+package com.searchengine;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+
+public class Storetables {
+	Connection conn = null;
+	Statement stmt = null;
+
+	//Function to connect to postgre SQL
+	public Connection connects() throws ClassNotFoundException, SQLException 
+	{
+		Class.forName("org.postgresql.Driver");
+
+		String dbURL = "jdbc:postgresql://localhost:5432/postgres";
+		String user = "postgres";
+		String pass = "isproject";
+		conn = DriverManager.getConnection(dbURL, user, pass);
+
+	   return conn;
+	}
+
+	//Function to get the Maximum Document id to set to the next occuring docid
+	public int getDocid() throws ClassNotFoundException, SQLException 
+	{
+		int docid = 0;
+		PreparedStatement ps = null;
+		ResultSet rs =null;
+		Storetables a = new Storetables();
+		conn = a.connects();
+		try{
+		if (conn != null) {
+			String lastBigDocid = "select MAX(docid) from documents";
+			ps = conn.prepareStatement(lastBigDocid);
+			 rs = ps.executeQuery();
+			while (rs.next()) {
+				docid = rs.getInt(1);
+			}
+		}
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		finally {
+			if(ps!=null)
+			  ps.close();
+			if(rs!=null)
+			  rs.close();
+			if(conn!=null)
+			  conn.close();
+			}
+		return docid;
+	}
+   //Function to store Parsed information of URL into features tables
+	public void storetofeatures(HashMap<String, Integer> keywords, int docid,String url1) throws ClassNotFoundException, SQLException  
+	{
+		Storetables a = new Storetables();
+		PreparedStatement ps =null,ps1=null;
+		ResultSet rs =null;
+		Boolean flag = false;
+		conn = a.connects();
+		try {
+			if (conn != null) {
+				String storesql = "insert into features(docid, term ,term_freq,doc_freq,idf,tf_idf_score,crawled_date) values( ? , ? , ? , ? , ? , ? , ?)";
+				java.sql.Date sqlDate = new java.sql.Date(new java.util.Date().getTime());
+				 ps= conn.prepareStatement(storesql);
+				 String checkurlinfeatures="SELECT url,crawled_date FROM documents WHERE url = ?";
+				 ps1=conn.prepareStatement(checkurlinfeatures);
+				 ps1.setString(1, url1);
+				 rs= ps1.executeQuery();
+				 //Logic to stop adding same URL into the tables by checking URL and corresponding crawled date
+				 while (rs.next()) 
+				 {
+				//Set flag true if same URL present
+						flag = (url1.equals(rs.getString(1)) && sqlDate.equals(rs.getDate(2)));
+						if (flag = true)
+							break;
+				 }
+				 //If flag is false insert the URL into table
+				 if(!flag)
+				 {
+				for(String key : keywords.keySet()) {
+					ps.setInt(1, docid);
+					ps.setString(2, key);
+					ps.setDouble(3, 1+Math.log(keywords.get(key))); // Absolute Term Frequency= 1+log(Term_count)
+					ps.setInt(4, 0);
+					ps.setDouble(5, 0.0);
+					ps.setDouble(6, 0.0);
+					ps.setDate(7, sqlDate);
+					ps.executeUpdate();
+				}
+		
+			  }
+			}
+		} catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+		finally {
+			if(ps!=null)
+			  ps.close();
+			if(conn!=null)
+			  conn.close();
+			}
+	}
+
+     //Function to Store crawled information into Documents table
+	public void storetodocuments(String url, int docid) throws ClassNotFoundException, SQLException {
+		Storetables a = new Storetables();
+		conn = a.connects();
+		PreparedStatement ps1 = null,ps2 = null,ps3 =null;
+		ResultSet rs =null;
+		Boolean flag = false;
+		try {
+			if (conn != null) {
+				String storesql = "insert into documents(docid, url ,crawled_date) values( ? , ? , ? )";
+				ps1 = conn.prepareStatement(storesql);
+				java.sql.Date sqlDate = new java.sql.Date(new java.util.Date().getTime());
+				String checksql = "SELECT docid,url,crawled_date FROM documents WHERE url = ?";
+				ps2 = conn.prepareStatement(checksql);
+				ps2.setString(1, url);
+				rs = ps2.executeQuery();
+				//Logic to stop adding same URL into the tables
+				while (rs.next()) {
+					//Set flag true if same URL present
+					flag = url.equals(rs.getString(2));
+					if (flag = true)
+						break;
+				}
+				//If flag true update the same URL with updated crawled date
+				if (flag) {
+					String updatesql = "UPDATE documents SET crawled_date=? WHERE url=?";
+					ps3 = conn.prepareStatement(updatesql);
+					ps3.setDate(1, sqlDate);
+					ps3.setString(2, url);
+					ps3.executeUpdate();
+				} //If flag is false insert into document tables
+				else {
+					ps1.setInt(1, docid);
+					ps1.setString(2, url);
+					ps1.setDate(3, sqlDate);
+					ps1.execute();
+				}
+			}
+		} catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+		finally{
+			if(ps1!=null)
+			ps1.close();
+			if(ps2!=null)
+			ps2.close();
+			if(ps3!=null)
+			ps3.close();
+			if(rs!=null)
+			rs.close();
+			if(conn!=null)
+			conn.close();
+		}
+	}
+    //Function to store docid and URL into temp table, to avoid storing different docid for the same URL
+	public int storetotemp(String url, int docid) throws ClassNotFoundException, SQLException {
+		Boolean flag = false;
+		int tdocid = 0;
+		Storetables st = new Storetables();
+		conn = st.connects();
+		ResultSet rs =null;
+		PreparedStatement ps1 =null, ps2=null;
+		try {
+			if (conn != null) {
+				String storesql = "insert into temptable(docid, url) values( ? , ? )";
+				ps1 = conn.prepareStatement(storesql);
+				String checksql = "SELECT docid,url FROM temptable WHERE url = ?";
+				ps2 = conn.prepareStatement(checksql);
+				ps2.setString(1, url);
+				rs= ps2.executeQuery();
+				//Set flag true if same URL present
+				while (rs.next()){
+					flag = url.equals(rs.getString(2));
+					if (flag == true) {
+						//Get the docid of the URL if already present
+						tdocid = rs.getInt(1);
+						break;
+					}
+
+				}
+				if (!flag){
+					ps1.setInt(1, docid);
+					ps1.setString(2, url);
+					ps1.execute();
+				}
+		  }
+		}catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+		finally{
+			if(ps1!=null)
+				ps1.close();
+				if(ps2!=null)
+				ps2.close();
+				if(rs!=null)
+				rs.close();
+				if(conn!=null)
+				conn.close();
+		}
+		if (flag)
+			return tdocid;
+		else
+			return docid;
+	}
+	
+	//Function to store docid and URL into Parsed table ,created for Start-Stop logic.
+	public void storeinparsed(String url, int docid) throws ClassNotFoundException, SQLException 
+	{
+		Storetables st = new Storetables();
+		conn = st.connects();
+		PreparedStatement ps =null;
+		try {
+			if (conn != null) {
+				String storesql = "insert into parsedtable(docid, url) values( ? , ? )";
+				ps = conn.prepareStatement(storesql);
+				ps.setInt(1, docid);
+				ps.setString(2, url);
+				ps.executeUpdate();
+		}
+		}catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+		}
+		finally{
+			if(ps!=null)
+				ps.close();
+				if(conn!=null)
+				conn.close();
+		}
+	
+	}
+
+	//Function to verify whether there was a crash ,if so it returns true else false
+	public boolean verifyurl() throws ClassNotFoundException, SQLException{
+		boolean flag = false;
+		int count = 0;
+		Storetables st = new Storetables();
+		conn = st.connects();
+		PreparedStatement ps =null;
+		ResultSet rs =null;
+		try{
+			if (conn != null){
+			String verify = "select url from parsedtable";
+			 ps = conn.prepareStatement(verify);
+			 rs = ps.executeQuery();
+			 	while(rs.next() &&count<3){
+				 count++;
+				}
+			 	if(count>1){
+				flag=true;
+			 	}
+			}
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		finally{
+			if(ps!=null)
+				ps.close();
+				if(rs!=null)
+				rs.close();
+				if(conn!=null)
+				conn.close();
+		}
+		return flag;
+	}
+	//Function to get all the  url's present in parsed table 
+	public LinkedHashSet<String> getParsedurl() throws ClassNotFoundException, SQLException{
+		LinkedHashSet<String> parsedURLs = new LinkedHashSet<String>();
+		Storetables st = new Storetables();
+		conn = st.connects();
+		PreparedStatement ps =null;
+		ResultSet rs =null;
+		try{
+			if (conn != null){
+				String allurls = "Select url from parsedtable";
+				ps = conn.prepareStatement(allurls);
+				rs = ps.executeQuery();
+				while (rs.next()){
+					parsedURLs.add(rs.getString(1));
+				}
+			}
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		finally{
+			if(ps!=null)
+				ps.close();
+				if(rs!=null)
+				rs.close();
+				if(conn!=null)
+				conn.close();
+		}
+			return parsedURLs;	
+	}
+  //Function to compute TF-IDF score for each term 
+	public void computetf_idf() throws ClassNotFoundException, SQLException {
+		Storetables a = new Storetables();
+		conn = a.connects();
+		PreparedStatement ps1 = null, ps2 =null,ps3 = null,ps4=null;
+		try {
+			if (conn != null){
+				//Query to compute Document frequency
+				String doc_freq = "update features as fs set doc_freq=(select count(*) from features where term=fs.term)";
+				//Query to compute Inverse Document frequency
+				String idf="update features f set idf = (log(u.N) - log(f.doc_freq)) from (select count(distinct docid) as N from documents) u,features f2 where f.docid= f2.docid and f.term=f2.term";
+				//Query to compute TF-IDF score
+				String tf_idf_score = "UPDATE features SET tf_idf_score = (idf)*(term_freq)";
+				//Drop the Temptable and Parsed table after crawling is completed
+				String dropTemptable = "drop table temptable,parsedtable";
+				ps1 = conn.prepareStatement(doc_freq);
+				ps1.executeUpdate();
+				ps2 = conn.prepareStatement(idf);
+				ps2.executeUpdate();
+				ps3 = conn.prepareStatement(tf_idf_score);
+				ps3.executeUpdate();
+				ps4 = conn.prepareStatement(dropTemptable);
+				ps4.executeUpdate();
+			}
+			System.out.println("Stored evrything in db");
+		}catch (Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+		finally{
+			if(ps1!=null)
+				ps1.close();
+				if(ps2!=null)
+				ps2.close();
+				if(ps3!=null)
+				ps3.close();
+				if(conn!=null)
+				conn.close();		
+		}
+
+	}
+  //Function to store outgoing link information of docid traversed.
+	public void storeLinks(int primURL, int str) throws ClassNotFoundException, SQLException {
+		Storetables a = new Storetables();
+		conn = a.connects();
+		PreparedStatement ps =null;
+		try {
+			String storeIds = "insert into links(from_docid,to_docid) values(? , ? )";
+			ps = conn.prepareStatement(storeIds);
+			ps.setInt(1, primURL);
+			ps.setInt(2,str);				
+			ps.executeUpdate();
+			ps.addBatch();
+		}
+		catch(Exception e) {
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+			System.exit(0);
+		}
+		finally{
+			if(ps!=null)
+			ps.close();
+			if(conn!=null)
+			conn.close();		
+		}
+	}
+    //Function to identify from which URL to restart after crash based on the MIN of the from_docid from Links table 
+	public int getfromid(int lasturlid) throws SQLException, ClassNotFoundException {
+		Storetables a = new Storetables();
+		conn = a.connects();
+		PreparedStatement ps =null;
+		ResultSet rs = null;
+		int fromid =0;
+		try {
+			if(conn!=null){
+			String getfromidsql = "Select MIN(from_docid) from links where to_docid =?";
+			ps = conn.prepareStatement(getfromidsql);
+			ps.setInt(1, lasturlid);
+			rs = ps.executeQuery();
+			while(rs.next())
+				fromid = rs.getInt(1);			
+		}
+	}
+	catch(Exception e){	
+		System.err.println(e.getClass().getName() + ": " + e.getMessage());
+	}
+	finally{
+		if(rs!=null)
+		rs.close();	
+		if(ps!=null)
+		ps.close();
+		if(conn!=null)
+		conn.close();		
+	}
+		return fromid;
+}
+    //Function to identify from which URL to restart after crash based on the docid in the parsed table  
+	public String geturl(int fromid) throws ClassNotFoundException, SQLException {
+		Storetables a = new Storetables();
+		conn = a.connects();
+		PreparedStatement ps =null;
+		ResultSet rs = null;
+		String url = null;
+		try {
+			if(conn!=null){
+				String queryurl = "select url from parsedtable where docid= ?";
+				ps = conn.prepareStatement(queryurl);
+				ps.setInt(1,fromid);
+				rs = ps.executeQuery();
+			}
+			while(rs.next()){
+				url = rs.getString(1);
+			}
+		}
+		catch(Exception e){	
+			System.err.println(e.getClass().getName() + ": " + e.getMessage());
+		}
+		finally{
+			if(rs!=null)
+			rs.close();	
+			if(ps!=null)
+			ps.close();
+			if(conn!=null)
+			conn.close();		
+		}	
+		return url;
+	}
+}

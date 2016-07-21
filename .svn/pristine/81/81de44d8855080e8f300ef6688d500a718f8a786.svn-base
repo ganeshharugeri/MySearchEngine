@@ -1,0 +1,434 @@
+package com.searchengine;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+/**
+ * Servlet implementation class TestServeletorandquery
+ */
+@WebServlet("/Search_servlet")
+public class Search_servlet extends HttpServlet {
+
+	private static final long serialVersionUID = 156031425989791810L;
+
+	protected void doGet(HttpServletRequest request, HttpServletResponse response)
+			throws ServletException, IOException {
+		ArrayList<String> keys = new ArrayList<String>();
+		ArrayList<String> didumean = new ArrayList<String>();
+
+		response.setContentType("text/html");
+		PrintWriter out = response.getWriter();
+		Stemmer stemObj = new Stemmer();
+		String names = request.getParameter("searchname");
+		System.out.println(" Entered string is> " + names);
+		boolean andflag = false, siteflag = false, tildeflag = false;
+		ArrayList<String> quoteskey = new ArrayList<String>();
+		String sitestring = "";
+		String siteword = "";
+		String bt = "";
+		Boolean lavenshteinflag = false;
+
+		Storetables st = new Storetables();
+		Connection conn = null;
+		PreparedStatement orps = null, andps = null, srps = null, tps = null;
+		ResultSet rs1 = null, rs2 = null, rs3 = null, rs4 = null;
+		try {
+			conn = st.connects();
+
+			out.println("<html><body>");
+			out.println("<div id=header><h2 align=centre> G & G Search Results </h2> </div>");
+			out.println("<div id=header><h4 align=centre>Search results for :" + names + "</h2> </div>");
+			//Placing the AD in the right corner of the page
+			out.println("<div style=\" float:right; width:30%;\">");
+
+			// Call n_gram of the query term
+			ArrayList<String> result = new ArrayList<String>();
+			result = N_gram.ngrams(names);
+			if (!result.isEmpty()) {
+				out.println("<h3> Advertisements: </h3>");
+				System.out.println("result: " + result.size());
+				// if(result.size()>0){
+				for (int j = 0; j < result.size(); j = j + 4) {
+					out.println("<p><b><font color='orange'><font size=4>Ad: </font></font>");
+					//Call to decrement the budget of the URL on click
+					out.println("<a href=Decrement_budget?advertise_url=" + result.get(2 + j)
+							+ "><font color='blue'><font size=4>");
+					out.println(result.get(0 + j) + "</font></font></a></b>");
+					out.println("<br><font color='green'>" + "     " + result.get(2 + j));
+					out.println("</font><br>" + result.get(1 + j) + "</p>");
+					//Display image of the AD if present
+					if (result.get(3 + j) != null) {
+						bt = result.get(3 + j);
+						out.println("<img src=\"data:image/png;base64," + bt + "\""
+								+ " style=\"width:200px;height:50px;padding:10px\"" + "/>");
+					}
+				}
+
+			}
+			out.println("</div>");
+			result.clear();
+
+			// Check for the site keyword in the query entered
+			if (names.contains("site:")) {
+				// out.println("Entering site ");
+				siteflag = true;
+				// get the sub string from : operator
+				sitestring = names.substring(names.indexOf(":") + 1, names.length());
+				if (!(sitestring.indexOf(" ") <= 0))
+					siteword = sitestring.substring(0, sitestring.indexOf(" "));
+				System.out.println("The entered site word> " + siteword);
+				String str = "site:" + siteword;
+				// Remove 'site' keyword and one or many white spaces
+				names = names.replace(str, "").replaceAll("\\s+", " ");
+				// System.out.println("End string> "+names);
+			}
+
+			// Check for the tilde operator in the query entered
+			if (names.contains("~")) {
+				tildeflag = true;
+				String language = "english";
+				String tildeQuery = QueryExpansion.buildTildeQuery(names, language);
+				names = QueryExpansion.trimQuery(names);
+				ArrayList<String> namesList = new ArrayList<String>(Arrays.asList(names.split(" ")));
+
+				// conn = st.connects();
+				tps = conn.prepareStatement(tildeQuery.toString());
+				rs4 = tps.executeQuery();
+				int z = 1;
+				while (rs4.next() && z <= 20) {
+					if (namesList.size() > 1) {
+						out.print("<p><b><a href=" + rs4.getString(1) + "><font color='blue'><font size=4>"
+								+ rs4.getString(2) + "</font></a></font></b>" + "<br><font color='green'>"
+								+ rs4.getString(1) + "</font><br>");
+						for (int j = 1; j <= namesList.size(); j++) {
+							if (j > 1)
+								out.println(" ...");
+							out.print(rs4.getString(j + 2));
+						}
+					} else {
+						System.out.println("\n" + rs4.getString(2) + "\n" + rs4.getString(1) + "\n" + rs4.getString(3));
+						out.print("<p><b><a href=" + rs4.getString(1) + "><font color='blue'><font size=4>"
+								+ rs4.getString(2) + "</a></font></font></b>" + "<br><font color='green'>"
+								+ rs4.getString(1) + "</font>" + "<br>" + rs4.getString(3) + "</br></p>");
+
+					}
+					z++;
+				}
+			}
+
+			// remove all double quotes from the query and store it in temporary
+			// variable for stemming
+			String temp = names.replaceAll("[“”ââ]", "");
+
+			String stemmedkeyword = null;
+			String[] array = temp.split(" ");
+
+			for (int j = 0; j < array.length; j++) {
+
+				if (array[j].length() != 1) {
+					char[] w = array[j].toCharArray();
+					stemObj.add(w, array[j].length());
+					stemObj.stem();
+					stemmedkeyword = stemObj.toString();
+					keys.add(stemmedkeyword);
+				}
+			}
+
+			if (names.contains("“") | (names.contains("”")) | names.contains("â") | (names.contains("\""))) {
+				ArrayList<String> namesList = new ArrayList<String>(Arrays.asList(names.split(" ")));
+				// System.out.println("namesList:
+				// "+Arrays.toString(namesList.toArray()));
+				// System.out.println("testing 123");
+				// Entering the AND query section
+				andflag = true;
+				// Check for one or many key words enclosed within quotes with
+				// regular expression
+				Pattern p = Pattern.compile("“([^“”\"]*)”");
+				Matcher m = p.matcher(names);
+				while (m.find()) {
+					if (m.find())
+						quoteskey.add(m.group(1));
+				}
+				for (int i = 0; i < namesList.size(); i++) {
+					// System.out.println("namesList.get(i)"+namesList.get(i));
+					if (namesList.get(i).startsWith("â")) {
+						String quoteWord = namesList.get(i).replaceAll("â", "").replaceAll("â", "");
+						System.out.println("quoteWord: " + quoteWord);
+						quoteskey.add(quoteWord);
+						// String qwerty
+						// =names.substring(names.indexOf("â")+1,names.length());
+						// System.out.println("ttestts: "+qwerty);
+						// quoteskey.add(qwerty.substring(0,
+						// qwerty.indexOf(" ")-1));
+					}
+				}
+				System.out.println(Arrays.toString(quoteskey.toArray()));
+			}
+
+			// Entering to compute Lavenshtein Distance of the Term
+
+			for (int l = 0; l < keys.size(); l++) {
+				StringBuilder lavenstein_terms = new StringBuilder(
+						"select  fs.term,MIN(levenshtein(fs.term,?)) from features fs where levenshtein(fs.term,?) <= 2 group by fs.term,fs.abs_term_freq order by levenshtein(fs.term, ?),fs.abs_term_freq desc limit 1");
+				PreparedStatement laventermps = conn.prepareStatement(lavenstein_terms.toString());
+				laventermps.setString(1, keys.get(l));
+				laventermps.setString(2, keys.get(l));
+				laventermps.setString(3, keys.get(l));
+				ResultSet laven = laventermps.executeQuery();
+
+				while (laven.next()) {
+
+					if (laven.getInt(2) == 0) {
+						// No spelling mistake in the term entered
+						didumean.add(keys.get(l));
+					} else {
+
+						// Spelling mistake found in the term entered
+						didumean.add(laven.getString(1));
+						// Spelling mistake corrected
+						// Flag to check if there was any error in the entered
+						// query
+						lavenshteinflag = true;
+					}
+				}
+
+			}
+			// If error in query term display did you mean
+			if (lavenshteinflag) {
+				StringBuilder concatenate = new StringBuilder();
+				StringBuilder concatenateplus = new StringBuilder();
+
+				for (String str : didumean) {
+					concatenate.append(str).append(" ");
+					concatenateplus.append(str).append("+");
+				}
+
+				// Hyper link to provide access to same search servlet with
+				// corrected query terms
+				out.println("<h4> Did you mean : ");
+
+				out.print("<a href=http://localhost:1234/com.webapp/Search_servlet?searchname=" + concatenateplus + ">"
+						+ concatenate + "</a></h4>");
+
+			}
+
+			if (!siteflag && !tildeflag && !andflag) {
+				// OR Query - string with no quotes
+				StringBuilder orquery = new StringBuilder(
+						// "select distinct(url),fs.combined_score from
+						// documents d,features fs where fs.language='english'
+						// and fs.term in (");
+						"select distinct(url), title");
+				for (int i = 0; i < keys.size(); i++) {
+					if (keys.size() > 1) {
+						orquery.append(", ts_headline('english', pagecontent, to_tsquery('" + keys.get(i)
+								+ "'), 'MaxWords=" + (int) (32 / keys.size()) + ", MinWords=8, ShortWord=3')");
+					} else
+						orquery.append(",ts_headline('english', pagecontent, to_tsquery('" + keys.get(i)
+								+ "'), 'MaxWords=32, MinWords=15, ShortWord=3')");
+				}
+				orquery.append(
+						",fs.pr_score pr, ts_rank(vector, query) AS rank from documents d,features fs,snippets i,to_tsquery('");
+
+				for (int i = 0; i < keys.size(); i++) {
+					if (i > 0) {
+						orquery.append("|");
+					}
+					orquery.append(keys.get(i));
+				}
+				orquery.append("')").append(
+						" query where fs.language='english' and fs.docid= d.docid and fs.docid=i.docid and term in(");
+				for (int m = 0; m < keys.size(); m++) {
+					if (m > 0)
+						orquery.append(",");
+					// System.out.println("Key values : " + keys.get(m));
+					orquery.append("?");
+				}
+				orquery.append(") order by pr desc, rank desc ");
+				orps = conn.prepareStatement(orquery.toString());
+				System.out.println("OR query: " + orquery);
+				for (int m = 0; m < keys.size(); m++) {
+					// System.out.println("Key values : " + keys.get(m));
+					orps.setString(m + 1, keys.get(m));
+				}
+				rs1 = orps.executeQuery();
+				int z = 1;
+				while (rs1.next() && !andflag && z <= 20) {
+					if (keys.size() > 1) {
+						out.print("<p><b><font color='blue'><font size=4><a href=" + rs1.getString(1) + ">"
+								+ rs1.getString(2) + "</a></font></font></b>" + "<br><font color='green'>"
+								+ rs1.getString(1) + "</font><br>");
+						for (int j = 1; j <= keys.size(); j++) {
+							if (j > 1)
+								out.println(" ...");
+							out.print(rs1.getString(j + 2));
+						}
+					} else {
+						System.out.println("\n" + rs1.getString(2) + "\n" + rs1.getString(1) + "\n" + rs1.getString(3));
+						out.print("<p><b><a href=" + rs1.getString(1) + "><font color='blue'><font size=4>"
+								+ rs1.getString(2) + "</a></font></font></b>" + "<br><font color='green'>"
+								+ rs1.getString(1) + "</font>" + "<br>" + rs1.getString(3) + "</br></p>");
+
+					}
+
+					String test = "select docid from snippets where pagecontent @@ to_tsquery(?)  and docid in (Select docid from documents  where url = ?)";
+					ArrayList<String> missingWords = new ArrayList<String>();
+					for (int y = 0; y < keys.size(); y++) {
+						PreparedStatement testps = null;
+						ResultSet testrs = null;
+						testps = conn.prepareStatement(test);
+						testps.setString(1, keys.get(y));
+						testps.setString(2, rs1.getString(1));
+						testrs = testps.executeQuery();
+						if (!testrs.isBeforeFirst()) {
+							missingWords.add(keys.get(y));
+						}
+					}
+					for (int m = 0; m < missingWords.size(); m++) {
+						if (m == 0)
+							out.print("<br><font size = 2><font color='red'> Missing word(s): </font></font>");
+						if (m > 0)
+							out.print(", ");
+						out.print("<font size = 2><font color='red'> " + missingWords.get(m) + "</font></font>");
+					}
+					z++;
+				}
+			}
+
+			// quotes query implementation
+			if (andflag && !siteflag && !tildeflag) {
+				// System.out.println(" Entering AND query");
+				StringBuilder andquery = new StringBuilder(
+						"select distinct(url),title, ts_headline('english', pagecontent, quotequery ,'MaxWords=16, MinWords=8, ShortWord=3'),ts_headline('english', pagecontent,to_tsquery(' ");
+				for (int l = 0; l < keys.size(); l++) {
+					if (l > 0)
+						andquery.append("|");
+					andquery.append(keys.get(l));
+				}
+
+				andquery.append(
+						" '), 'MaxWords=16, MinWords=8, ShortWord=3'), ts_rank(vector, quotequery) AS rank from documents d JOIN snippets s USING (docid), to_tsquery ('");
+				for (int i = 0; i < quoteskey.size(); i++) {
+					if (i > 0) {
+						andquery.append(" & ");
+					}
+					andquery.append(quoteskey.get(i));
+				}
+				andquery.append("') quotequery  where pagecontent @@ quotequery ").append(" order by rank desc");
+				andps = conn.prepareStatement(andquery.toString());
+				System.out.println("andquery: " + andquery);
+				rs2 = andps.executeQuery();
+				int y = 1;
+				while (rs2.next() && y <= 20) {
+					if (keys.size() > 1) {
+						out.print("<p><b><a href=" + rs2.getString(1) + "><font color='blue'><font size=4>"
+								+ rs2.getString(2) + "</font></font></a></b>" + "<br><font color='green'>"
+								+ rs2.getString(1) + "</font><br>");
+						for (int j = 1; j <= keys.size(); j++) {
+							if (j > 1)
+								out.println(" ...");
+							out.print(rs2.getString(j + 2));
+						}
+					} else {
+						System.out.println("\n" + rs2.getString(2) + "\n" + rs2.getString(1) + "\n" + rs2.getString(3));
+						out.print("<p><b><a href=" + rs2.getString(1) + "><font color='blue'><font size=4>"
+								+ rs2.getString(2) + "</a></font></font></b>" + "<br><font color='green'>"
+								+ rs2.getString(1) + "</font>" + "<br>" + rs2.getString(3) + "</br></p>");
+
+					}
+					y++;
+				}
+				// System.out.println("Finished or query");
+			}
+
+			// site implementation
+
+			if (siteflag && !tildeflag) {
+				out.println(
+						"<table border=1> <tr><th> RANK    </th> <th padding: 5px;>   URL    </th> <th>   Score   </th></tr>");
+				StringBuilder sitequery = new StringBuilder();
+				// sitequery.append("select url from documents where url like
+				// '%"
+				// + sitestring + "%'");
+				sitequery.append("select distinct(url),f.combined_score from documents d,features f where url like '%"
+						+ siteword + "%' and f.docid=d.docid and f.term in (");
+				for (int i = 0; i < keys.size(); i++) {
+					if (i > 0) {
+						sitequery.append(",");
+					}
+					sitequery.append("?");
+				}
+				sitequery.append(")").append(" order by f.combined_score desc;");
+				srps = conn.prepareStatement(sitequery.toString());
+				System.out.println("site query: " + sitequery);
+				for (int m = 0; m < keys.size(); m++) {
+					// System.out.println("Key values in site : " +
+					// keys.get(m));
+					srps.setString(m + 1, keys.get(m));
+				}
+				rs3 = srps.executeQuery();
+				int z = 1;
+				while (rs3.next() && z <= 20) {
+					System.out.println("\n" + rs3.getString(1) + " combined score: " + rs3.getFloat(2));
+
+					out.print("<tr><td>" + z + "</td> <td padding: 5px;><a href=#>" + rs3.getString(1)
+							+ "</a></td> <td> " + rs3.getFloat(2) + "</td></tr>");
+					z++;
+				}
+			}
+			out.println("</table></body></html>");
+			conn.close();
+		} catch (SQLException e) {
+			e.printStackTrace();
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		} finally {
+			try {
+				if (conn != null)
+					conn.close();
+
+				if (rs1 != null)
+					rs1.close();
+				if (rs2 != null)
+					rs2.close();
+				if (rs3 != null)
+					rs3.close();
+				if (rs4 != null)
+					rs4.close();
+
+				if (orps != null)
+					orps.close();
+				if (andps != null)
+					andps.close();
+				if (srps != null)
+					srps.close();
+				if (tps != null)
+					tps.close();
+			} catch (SQLException e) {
+				e.printStackTrace();
+			}
+		}
+
+	}
+
+	protected void doPost(HttpServletRequest request, HttpServletResponse response)
+			throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		doGet(request, response);
+	}
+
+}
